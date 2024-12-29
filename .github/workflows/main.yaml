@@ -1,0 +1,28 @@
+name: main
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        id: setup-python
+        with:
+          python-version-file: pyproject.toml
+
+      - run: echo "UV_PYTHON=${{ steps.setup-python.outputs.python-path }}" >> "$GITHUB_ENV"
+      - run: uv lock --locked
+      - run: uv sync --all-extras --dev
+      - run: uv run ruff check .
+      - run: uv run pyright
+      - run: uv run pytest

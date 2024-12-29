@@ -1,0 +1,120 @@
+[project]
+name = "oidc-provider-mock"
+version = "0.0.1.dev1"
+description = "OpenID Connect provider server for testing authentication"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = [
+  "OpenID Connect",
+  "OIDC",
+  "mock",
+  "OAuth",
+  "testing",
+  "development",
+  "authentication",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Software Development :: Testing :: Mocking",
+  "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+  "Topic :: Security",
+]
+dependencies = [
+  "authlib>=1.4.0",
+  "flask>=3.1.0",
+  "pydantic>=2.10.4",
+  "pyjwt>=2.10.1",
+  "requests>=2.32.3",
+]
+
+[project.urls]
+# https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
+homepage = "https://github.com/geigerzaehler/oidc-provider-mock"
+documentation = "https://github.com/geigerzaehler/oidc-provider-mock"
+source = "https://github.com/geigerzaehler/oidc-provider-mock"
+issues = "https://github.com/geigerzaehler/oidc-provider-mock/issues"
+
+[dependency-groups]
+dev = [
+  "pytest-playwright>=0.6.2",
+  "pytest>=8.3.4",
+  "pytest-flask>=1.3.0",
+  "ruff>=0.8.4",
+  "typeguard>=4.4.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+live_server_scope = "function"
+addopts = """\
+  --verbose \
+  --tracing=retain-on-failure \
+  """
+filterwarnings = ["error"]
+typeguard-packages = """
+oidc
+oidc_provider_mock
+"""
+typeguard-debug-instrumentation = true
+typeguard-forward-ref-policy = "ERROR"
+typeguard-collection-check-strategy = "ALL_ITEMS"
+
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint]
+preview = true
+extend-select = [
+  "I",
+  "UP",
+  "PT",
+  "PIE",
+  "B",
+  "SIM",
+  "TCH",
+  "T20",
+  "RUF",
+  "C4",   # List comprehension
+  "DTZ",
+  "FURB",
+]
+ignore = [
+  # Pyright checks for unused imports and does it better.
+  "F401",
+  # contextlib.suppress() is less explicit
+  "SIM105",
+  # ternary is often less readable
+  "SIM108",
+  # Ignore ambigious unicode characters
+  "RUF001",
+  "RUF002",
+  "RUF003",
+  # ClassVar annotations are to verbose
+  "RUF012",
+  # It’s ok to reimplement operators in lambdas. The lambda is more explicit and
+  # easier to understand.
+  "FURB118",
+]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "none"
+reportUnnecessaryTypeIgnoreComment = "warning"
+reportUnusedClass = "warning"
+reportUnusedImport = "warning"
+reportUnusedFunction = "warning"
+reportUnusedVariable = "warning"
