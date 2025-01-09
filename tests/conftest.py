@@ -1,32 +1,10 @@
-from collections.abc import Iterator
 import logging
 import threading
 import wsgiref.simple_server
 import wsgiref.types
+from collections.abc import Iterator
 
 import pytest
-import pytest_flask.live_server
-from playwright.sync_api import BrowserContext, Error, Page
-
-
-@pytest.fixture
-def browser_context_args(
-    browser_context_args: dict[str, object],
-    live_server: pytest_flask.live_server.LiveServer,
-):
-    return {**browser_context_args, "base_url": live_server.url()}
-
-
-@pytest.fixture
-def page(context: BrowserContext) -> Page:
-    page = context.new_page()
-
-    def on_page_error(error: Error):
-        raise Exception("page error occurred") from error
-
-    page.on("pageerror", on_page_error)
-    return page
-
 
 _logger = logging.getLogger(__name__)
 

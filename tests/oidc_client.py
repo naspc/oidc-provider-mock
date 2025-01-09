@@ -1,6 +1,10 @@
+"""
+Experimental OpenID Connect client (Relying Party).
+"""
+
 import dataclasses
 import secrets
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Literal, Self, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -238,12 +242,12 @@ def start_authorization(
     provider_config: ProviderConfiguration,
     *,
     client_id: str,
-    # client_secret: str,
+    # TODO: client_secret: str,
     redirect_uri: str,
     nonce: bool = True,
-    scope: Iterable[str] = ("openid",),
 ) -> AuthorizationRequest:
-    """
+    """Create an authentication request for the authorization code flow.
+
     https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
     """
     # TODO: check "openid in scoe"
@@ -272,13 +276,23 @@ def start_authorization(
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
-class AuthentiationResult:
+class TokenResult:
     access_token: str
+    """OAuth2 bearer token for accessing resources on behalf of the authenticated
+    user."""
+
     claims: dict[str, str]
+    """Claims contained in the JWT ID token.
+
+    See https://openid.net/specs/openid-connect-core-1_0.html#Claims"""
 
 
 @dataclasses.dataclass
 class TokenResponse:
+    """Response from OpenID Connect token endpoint.
+
+    See https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse"""
+
     access_token: str
     id_token: str
 
@@ -288,11 +302,17 @@ class TokenResponse:
         return pydantic.TypeAdapter(cls).validate_python(data)
 
 
-def authenticate(
+def get_token(
     openid_config: ProviderConfiguration,
     request: AuthorizationRequest,
     query_string: str,
-) -> AuthentiationResult:
+) -> TokenResult:
+    """Fetch the ID Token and Access Token using the code from a successful
+    authorization response encoded in `query_string`.
+    """
+    # TODO: Extract query string parsing and state validation to a seaparter
+    # method
+
     # TODO: return access_token, refresh_token, etc
     query = parse_qs(query_string)
 
@@ -323,7 +343,7 @@ def authenticate(
     if request.nonce is not None or "nonce" in claims:
         assert claims["nonce"] == request.nonce
 
-    return AuthentiationResult(
+    return TokenResult(
         access_token=token_response.access_token,
         claims=claims,
     )

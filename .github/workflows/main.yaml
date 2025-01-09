@@ -21,8 +21,8 @@ jobs:
           python-version-file: pyproject.toml
 
       - run: echo "UV_PYTHON=${{ steps.setup-python.outputs.python-path }}" >> "$GITHUB_ENV"
-      - run: uv lock --locked
-      - run: uv sync --all-extras --dev
+      - run: uv sync --all-extras --locked
       - run: uv run ruff check .
       - run: uv run pyright
       - run: uv run pytest
+      - run: uv run sphinx-build docs docs/dist

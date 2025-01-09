@@ -1,31 +1,25 @@
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
-import flask
 import flask.testing
+import oidc_client
 import pytest
 import requests
 
-import oidc
 import oidc_provider_mock
 
 
 @pytest.fixture
 def app():
-    app = flask.Flask(__name__)
-
-    state = oidc_provider_mock.State()
-    app.register_blueprint(oidc_provider_mock.blueprint, state=state)
-
-    return app
+    return oidc_provider_mock.app()
 
 
-def test_login_success(wsgi_server: str):
+def test_auth_success(wsgi_server: str):
     """
     Authorization Code flow success with userinfo
     """
 
-    openid_config = oidc.ProviderConfiguration.fetch(wsgi_server)
-    authorization_request = oidc.start_authorization(
+    openid_config = oidc_client.ProviderConfiguration.fetch(wsgi_server)
+    authorization_request = oidc_client.start_authorization(
         openid_config,
         redirect_uri="https://example.com/auth-response",
         client_id="CLIENT_ID",
@@ -43,15 +37,15 @@ def test_login_success(wsgi_server: str):
     location = urlsplit(response.headers["location"])
     assert location.geturl().startswith("https://example.com/auth-response?")
 
-    authn_result = oidc.authenticate(
+    authentication_result = oidc_client.get_token(
         openid_config, authorization_request, location.query
     )
-    assert authn_result.claims["sub"] == "SUB"
+    assert authentication_result.claims["sub"] == "SUB"
 
     assert openid_config.userinfo_endpoint
     response = requests.get(
         openid_config.userinfo_endpoint,
-        headers={"authorization": f"Bearer {authn_result.access_token}"},
+        headers={"authorization": f"Bearer {authentication_result.access_token}"},
     )
     response.raise_for_status()
     assert response.json() == {
@@ -61,11 +55,75 @@ def test_login_success(wsgi_server: str):
 
 
 @pytest.mark.skip
-def test_invalid_nonce(): ...
+def test_authorize_deny():
+    """User denies auth via form and is redirected with an error response"""
+
+
+def test_authorization_form_show(client: flask.testing.FlaskClient):
+    # TODO: test html form
+    query = urlencode({
+        "client_id": "CLIENT_ID",
+        "redirect_uri": "REDIRECT_URI",
+        "response_type": "code foo",
+    })
+    response = client.get(f"/oauth2/authorize?{query}")
+    assert response.status_code == 200
+
+
+@pytest.mark.xfail
+def test_authorization_query_parsing(client: flask.testing.FlaskClient):
+    """
+    * client_id missing
+    * invalid redirect_uri
+    * invalid response_type
+
+    All return a 400 with error description
+    """
+    query = urlencode({
+        "redirect_uri": "REDIRECT_URI",
+        "response_type": "RESPONSE_TYPE",
+    })
+    response = client.get(f"/oauth2/authorize?{query}")
+    assert response.status_code == 400
+    assert "client_id missing from query parameters" in response.text
+
+    # TODO: invalid redirect_uri
+    query = urlencode({
+        "client_id": "CLIENT_ID",
+        "redirect_uri": "invalid url",
+        "response_type": "RESPONSE_TYPE",
+    })
+    response = client.get(f"/oauth2/authorize?{query}")
+    assert response.status_code == 400
+    assert "redirect_uri missing from query parameters" in response.text
+
+    query = urlencode({
+        "client_id": "CLIENT_ID",
+        "redirect_uri": "REDIRECT_URI",
+        "response_type": "unknown",
+    })
+    response = client.get(f"/oauth2/authorize?{query}")
+    assert response.status_code == 400
+    assert "invalid response_type" in response.text
 
 
 @pytest.mark.skip
-def test_custom_claims(): ...
+def test_userinfo_unauthorized():
+    """
+    * `authorization` header missing
+    * `authorization` with wrong type
+    * `authorization` with invalid token
+
+    All return 400 error with description
+    """
+
+
+@pytest.mark.skip
+def test_refresh(): ...
+
+
+@pytest.mark.skip
+def test_invalid_nonce(): ...
 
 
 @pytest.mark.skip
