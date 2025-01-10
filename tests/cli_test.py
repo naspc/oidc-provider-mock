@@ -11,9 +11,17 @@ def test_cli():
         text=True,
     ) as process:
         try:
-            time.sleep(0.5)
             base_url = "http://127.0.0.1:9000"
-            response = requests.get(f"{base_url}/.well-known/openid-configuration")
+            response = None
+            for _ in range(5):
+                try:
+                    response = requests.get(
+                        f"{base_url}/.well-known/openid-configuration"
+                    )
+                except requests.exceptions.ConnectionError:
+                    time.sleep(0.5)
+
+            assert response
             assert response.status_code == 200
             body = response.json()
             assert body["issuer"] == base_url
