@@ -2,7 +2,7 @@ HTTP Endpoints
 ==============
 
 ``GET /oauth2/authorize``
----------------------
+-------------------------
 
 Show an authentication form to the user. Submitting the form will redirect to
 the relying party that requested the authentication.

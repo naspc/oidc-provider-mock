@@ -24,6 +24,6 @@ jobs:
       - run: echo "UV_PYTHON=${{ steps.setup-python.outputs.python-path }}" >> "$GITHUB_ENV"
       - run: uv sync --all-extras --locked
       - run: uv run ruff check .
-      - run: uv run pyright
+      - run: uv run pyright --warnings
       - run: uv run pytest
-      - run: uv run sphinx-build docs docs/dist
+      - run: uv run sphinx-build --fail-on-warnings docs docs/dist
