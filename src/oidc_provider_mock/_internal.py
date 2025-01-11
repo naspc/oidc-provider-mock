@@ -3,16 +3,18 @@ import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from urllib.parse import urlencode, urlsplit
 
 import flask
+import pydantic
 import werkzeug.exceptions
 from authlib import jose
 
 
 class _AccessToken:
-    def __init__(self, userinfo: dict[str, object], expires_in: timedelta):
-        self.userinfo = userinfo
+    def __init__(self, sub: str, expires_in: timedelta):
+        self.sub = sub
         self.expires_at = datetime.now(UTC) + expires_in
         self.token = secrets.token_urlsafe(16)
 
@@ -34,9 +36,17 @@ class _AuthorizationGrant:
         return self.expires_at > datetime.now(UTC)
 
 
+@dataclass(kw_only=True)
+class User:
+    sub: str
+    claims: dict[str, str] = field(default_factory=dict)
+    userinfo: dict[str, object] = field(default_factory=dict)
+
+
 class State:
     _access_tokens: list[_AccessToken]
     _authorization_grants: list[_AuthorizationGrant]
+    _users: dict[str, User]
 
     def __init__(
         self,
@@ -47,6 +57,7 @@ class State:
         self._access_tokens = []
         self._authorization_grants = []
         self.key = jose.RSAKey.generate_key(2048, is_private=True)  # pyright: ignore[reportUnknownMemberType]
+        self._users = {}
 
     def get_access_token(self, token: str) -> _AccessToken | None:
         return next(
@@ -73,9 +84,9 @@ class State:
         self._authorization_grants.append(grant)
 
     def add_access_token(
-        self, userinfo: dict[str, object], expires_in: timedelta | None = None
+        self, sub: str, expires_in: timedelta | None = None
     ) -> _AccessToken:
-        identity = _AccessToken(userinfo, expires_in or self._access_tokens_lifetime)
+        identity = _AccessToken(sub, expires_in or self._access_tokens_lifetime)
         self._access_tokens.append(identity)
         return identity
 
@@ -87,6 +98,19 @@ class State:
         @app.before_request
         def provide_state():
             flask.g.oidc_mock_provider_state = self
+
+    def update_user(self, user: User) -> User:
+        existing = self._users.get(user.sub)
+        if not existing:
+            self._users[user.sub] = user
+            return user
+
+        existing.claims.update(user.claims)
+        existing.userinfo.update(user.userinfo)
+        return existing
+
+    def get_user(self, sub: str) -> User | None:
+        return self._users.get(sub, None)
 
 
 blueprint = flask.Blueprint("oidc-provider", __name__)
@@ -218,15 +242,18 @@ def get_token():
     # TODO: client auth
     authorization = State.current().get_authorization(data["code"])
     if not authorization:
-        return flask.jsonify({"error": "invalid_grant"}), 404
+        return flask.jsonify({"error": "invalid_grant"}), HTTPStatus.NOT_FOUND
 
-    identity = State.current().add_access_token({"sub": authorization.sub})
+    user = User(sub=authorization.sub)
+    user = State.current().update_user(user)
+    identity = State.current().add_access_token(user.sub)
     id_token = jose.jwt.encode(  # pyright: ignore
         {
             "alg": "RS256",
             "kid": State.current().key.thumbprint(),
         },
         {
+            **user.claims,
             "iss": flask.request.host_url.rstrip("/"),
             "aud": authorization.client_id,
             "sub": authorization.sub,
@@ -238,16 +265,13 @@ def get_token():
         State.current().key,
     ).decode("utf-8")
 
-    return (
-        flask.jsonify({
-            "access_token": identity.token,
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            # "refresh_token": "REFRESH_TOKEN",
-            "id_token": id_token,
-        }),
-        200,
-    )
+    return flask.jsonify({
+        "access_token": identity.token,
+        "token_type": "Bearer",
+        "expires_in": 3600,
+        # "refresh_token": "REFRESH_TOKEN",
+        "id_token": id_token,
+    })
 
 
 @blueprint.route("/userinfo", methods=["GET", "POST"])
@@ -259,11 +283,44 @@ def userinfo():
         or not flask.request.authorization.token
     ):
         # TODO: include error in json
-        return flask.jsonify({"error": ""}), 401, {"www-authenticate": "Bearer"}
+        return (
+            flask.jsonify({"error": ""}),
+            HTTPStatus.UNAUTHORIZED,
+            {"www-authenticate": "Bearer"},
+        )
 
     identity = State.current().get_access_token(flask.request.authorization.token)
+    # TODO: check valid
     if not identity:
         # TODO: include error in json
-        return flask.jsonify({"error": ""}), 401, {"www-authenticate": "Bearer"}
+        return (
+            flask.jsonify({"error": ""}),
+            HTTPStatus.UNAUTHORIZED,
+            {"www-authenticate": "Bearer"},
+        )
 
-    return flask.jsonify(identity.userinfo), 200
+    user = State.current().get_user(identity.sub)
+    if not user:
+        # TODO: include error in json
+        return (
+            flask.jsonify({"error": ""}),
+            HTTPStatus.UNAUTHORIZED,
+            {"www-authenticate": "Bearer"},
+        )
+
+    return flask.jsonify(user.userinfo), HTTPStatus.OK
+
+
+class UserCreatePayload(pydantic.BaseModel):
+    sub: str
+    claims: dict[str, str] = pydantic.Field(default_factory=dict)
+    userinfo: dict[str, object] = pydantic.Field(default_factory=dict)
+
+
+@blueprint.route("/users", methods=["POST"])
+def create_user():
+    # TODO: document this endpoint for users
+    payload = UserCreatePayload.model_validate(flask.request.json, strict=True)
+    user = User(sub=payload.sub, claims=payload.claims, userinfo=payload.userinfo)
+    State.current().update_user(user)
+    return "", HTTPStatus.CREATED

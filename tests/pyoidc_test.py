@@ -23,6 +23,15 @@ def test_auth_success(wsgi_server: str):
     state = faker.password()
     nonce = faker.password()
 
+    httpx.post(
+        f"{wsgi_server}/users",
+        json={
+            "sub": subject,
+            "claims": {"custom": "CLAIM"},
+            "userinfo": {"custom": "USERINFO"},
+        },
+    ).raise_for_status()
+
     client = oic.oic.Client(client_id, client_authn_method=CLIENT_AUTHN_METHOD)
     client.provider_config(wsgi_server)
     login_url = client.construct_AuthorizationRequest(
@@ -52,5 +61,6 @@ def test_auth_success(wsgi_server: str):
         authn_method="client_secret_basic",
     )
     assert response["id_token"]["sub"] == subject
+    assert response["id_token"]["custom"] == "CLAIM"
     userinfo = client.do_user_info_request(token=response["access_token"])
-    assert userinfo["sub"] == subject
+    assert userinfo["custom"] == "USERINFO"

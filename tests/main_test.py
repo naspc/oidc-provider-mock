@@ -1,9 +1,9 @@
 from urllib.parse import urlencode, urlsplit
 
 import flask.testing
+import httpx
 import oidc_client
 import pytest
-import httpx
 from faker import Faker
 
 faker = Faker()
@@ -16,6 +16,15 @@ def test_auth_success(wsgi_server: str):
 
     subject = faker.email()
     client_id = faker.pystr(10, 30)
+
+    httpx.post(
+        f"{wsgi_server}/users",
+        json={
+            "sub": subject,
+            "claims": {"custom": "CLAIM"},
+            "userinfo": {"custom": "USERINFO"},
+        },
+    ).raise_for_status()
 
     openid_config = oidc_client.ProviderConfiguration.fetch(wsgi_server)
     authorization_request = oidc_client.start_authorization(
@@ -39,6 +48,7 @@ def test_auth_success(wsgi_server: str):
         openid_config, authorization_request, location.query
     )
     assert authentication_result.claims["sub"] == subject
+    assert authentication_result.claims["custom"] == "CLAIM"
 
     assert openid_config.userinfo_endpoint
     response = httpx.get(
@@ -47,7 +57,7 @@ def test_auth_success(wsgi_server: str):
     )
     response.raise_for_status()
     assert response.json() == {
-        "sub": subject,
+        "custom": "USERINFO",
     }
 
 
