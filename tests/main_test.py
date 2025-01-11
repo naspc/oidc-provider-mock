@@ -3,14 +3,10 @@ from urllib.parse import urlencode, urlsplit
 import flask.testing
 import oidc_client
 import pytest
-import requests
+import httpx
+from faker import Faker
 
-import oidc_provider_mock
-
-
-@pytest.fixture
-def app():
-    return oidc_provider_mock.app()
+faker = Faker()
 
 
 def test_auth_success(wsgi_server: str):
@@ -18,19 +14,21 @@ def test_auth_success(wsgi_server: str):
     Authorization Code flow success with userinfo
     """
 
+    subject = faker.email()
+    client_id = faker.pystr(10, 30)
+
     openid_config = oidc_client.ProviderConfiguration.fetch(wsgi_server)
     authorization_request = oidc_client.start_authorization(
         openid_config,
         redirect_uri="https://example.com/auth-response",
-        client_id="CLIENT_ID",
+        client_id=client_id,
     )
 
-    response = requests.post(
+    response = httpx.post(
         authorization_request.url,
         data={
-            "sub": "SUB",
+            "sub": subject,
         },
-        allow_redirects=False,
     )
 
     assert response.status_code == 302
@@ -40,17 +38,16 @@ def test_auth_success(wsgi_server: str):
     authentication_result = oidc_client.get_token(
         openid_config, authorization_request, location.query
     )
-    assert authentication_result.claims["sub"] == "SUB"
+    assert authentication_result.claims["sub"] == subject
 
     assert openid_config.userinfo_endpoint
-    response = requests.get(
+    response = httpx.get(
         openid_config.userinfo_endpoint,
         headers={"authorization": f"Bearer {authentication_result.access_token}"},
     )
     response.raise_for_status()
     assert response.json() == {
-        "sub": "SUB",
-        "email": "SUB",
+        "sub": subject,
     }
 
 

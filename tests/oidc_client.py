@@ -9,8 +9,8 @@ from typing import Literal, Self, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import authlib
+import httpx
 import pydantic
-import requests
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -22,7 +22,7 @@ class ProviderConfiguration:
     @staticmethod
     def fetch(issuer_url: str) -> "ProviderConfiguration":
         # TODO: vaidate issuer url
-        response = requests.get(f"{issuer_url}/.well-known/openid-configuration")
+        response = httpx.get(f"{issuer_url}/.well-known/openid-configuration")
         response.raise_for_status()
         return ProviderConfiguration.decode(response.json())
 
@@ -327,11 +327,11 @@ def get_token(
     # TODO: ValueError
     assert openid_config.token_endpoint
 
-    response = requests.post(openid_config.token_endpoint, data={"code": code})
+    response = httpx.post(openid_config.token_endpoint, data={"code": code})
     response.raise_for_status()
     token_response = TokenResponse.decode(response.json())
 
-    keys = requests.get(openid_config.jwks_uri).json()
+    keys = httpx.get(openid_config.jwks_uri).json()
     keys = authlib.jose.JsonWebKey.import_key_set(keys)  # type: ignore
 
     claims = authlib.jose.JsonWebToken(["RS256"]).decode(token_response.id_token, keys)  # type: ignore

@@ -6,7 +6,14 @@ from collections.abc import Iterator
 
 import pytest
 
+import oidc_provider_mock
+
 _logger = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def app():
+    return oidc_provider_mock.app()
 
 
 class _WSGIRequestHandler(wsgiref.simple_server.WSGIRequestHandler):
@@ -15,16 +22,17 @@ class _WSGIRequestHandler(wsgiref.simple_server.WSGIRequestHandler):
 
 
 @pytest.fixture
-def wsgi_server(
-    app: wsgiref.types.WSGIApplication,
-) -> Iterator[str]:
+def wsgi_server() -> Iterator[str]:
     server = wsgiref.simple_server.make_server(
-        "localhost", 0, app, handler_class=_WSGIRequestHandler
+        "localhost",
+        0,
+        oidc_provider_mock.app(),
+        handler_class=_WSGIRequestHandler,
     )
 
     def run():
         try:
-            server.serve_forever()
+            server.serve_forever(0.01)
         finally:
             server.server_close()
 

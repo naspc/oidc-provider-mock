@@ -1,7 +1,7 @@
 import subprocess
 import time
 
-import requests
+import httpx
 
 
 def test_cli():
@@ -15,10 +15,8 @@ def test_cli():
             response = None
             for _ in range(5):
                 try:
-                    response = requests.get(
-                        f"{base_url}/.well-known/openid-configuration"
-                    )
-                except requests.exceptions.ConnectionError:
+                    response = httpx.get(f"{base_url}/.well-known/openid-configuration")
+                except httpx.ConnectError:
                     time.sleep(0.5)
 
             assert response

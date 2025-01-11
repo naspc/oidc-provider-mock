@@ -11,8 +11,8 @@ from authlib import jose
 
 
 class _AccessToken:
-    def __init__(self, email: str, expires_in: timedelta):
-        self.email = email
+    def __init__(self, userinfo: dict[str, object], expires_in: timedelta):
+        self.userinfo = userinfo
         self.expires_at = datetime.now(UTC) + expires_in
         self.token = secrets.token_urlsafe(16)
 
@@ -73,9 +73,9 @@ class State:
         self._authorization_grants.append(grant)
 
     def add_access_token(
-        self, user_email: str, expires_in: timedelta | None = None
+        self, userinfo: dict[str, object], expires_in: timedelta | None = None
     ) -> _AccessToken:
-        identity = _AccessToken(user_email, expires_in or self._access_tokens_lifetime)
+        identity = _AccessToken(userinfo, expires_in or self._access_tokens_lifetime)
         self._access_tokens.append(identity)
         return identity
 
@@ -102,7 +102,7 @@ def bind_state_to_app_context(setup_state: flask.blueprints.BlueprintSetupState)
 
 
 @blueprint.after_request
-def _after_request(response: flask.Response):
+def after_request(response: flask.Response):
     response.headers.setdefault("cache-control", "no-cache")
     return response
 
@@ -198,13 +198,15 @@ def process_authorization():
     )
     State.current().add_authorization_grant(authorization_grant)
 
+    redirect_query_params = {
+        "code": authorization_grant.code,
+    }
+
+    if "state" in query:
+        redirect_query_params["state"] = query["state"]
+
     return flask.redirect(
-        redirect_uri._replace(
-            query=urlencode({
-                "state": query["state"],
-                "code": authorization_grant.code,
-            })
-        ).geturl()
+        redirect_uri._replace(query=urlencode(redirect_query_params)).geturl()
     )
 
 
@@ -218,7 +220,7 @@ def get_token():
     if not authorization:
         return flask.jsonify({"error": "invalid_grant"}), 404
 
-    identity = State.current().add_access_token(authorization.sub)
+    identity = State.current().add_access_token({"sub": authorization.sub})
     id_token = jose.jwt.encode(  # pyright: ignore
         {
             "alg": "RS256",
@@ -248,7 +250,7 @@ def get_token():
     )
 
 
-@blueprint.get("/userinfo")
+@blueprint.route("/userinfo", methods=["GET", "POST"])
 def userinfo():
     """Return user info for the provided OAuth2 Bearer token"""
     if (
@@ -256,13 +258,12 @@ def userinfo():
         or flask.request.authorization.type != "bearer"
         or not flask.request.authorization.token
     ):
-        return b"", 401, {"www-authenticate": "Bearer"}
+        # TODO: include error in json
+        return flask.jsonify({"error": ""}), 401, {"www-authenticate": "Bearer"}
 
     identity = State.current().get_access_token(flask.request.authorization.token)
     if not identity:
-        return b"", 401, {"www-authenticate": "Bearer"}
+        # TODO: include error in json
+        return flask.jsonify({"error": ""}), 401, {"www-authenticate": "Bearer"}
 
-    return (
-        flask.jsonify({"sub": identity.email, "email": identity.email}),
-        200,
-    )
+    return flask.jsonify(identity.userinfo), 200
