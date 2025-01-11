@@ -26,4 +26,4 @@ jobs:
       - run: uv run ruff check .
       - run: uv run pyright --warnings
       - run: uv run pytest
-      - run: uv run sphinx-build --fail-on-warnings docs docs/dist
+      - run: uv run sphinx-build --fail-on-warning docs docs/dist
