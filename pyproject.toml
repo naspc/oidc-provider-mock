@@ -1,6 +1,6 @@
 [project]
 name = "oidc-provider-mock"
-version = "0.0.1.dev1"
+version = "0.0.1.alpha2.dev1"
 description = "OpenID Connect provider server for testing authentication"
 readme = "README.md"
 requires-python = ">=3.10"
