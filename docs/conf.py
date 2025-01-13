@@ -28,6 +28,7 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinx.ext.todo",
+    "myst_parser",
 ]
 
 intersphinx_mapping = {
@@ -36,6 +37,7 @@ intersphinx_mapping = {
 }
 
 html_theme = "furo"
+templates_path = ["_templates"]
 html_title = "OIDC Provider Mock"
 html_sidebars = {
     "**": [
@@ -44,6 +46,7 @@ html_sidebars = {
         # "sidebar/search.html",
         "sidebar/navigation.html",
         # "sidebar/ethical-ads.html",
+        "sidebar_bottom.html",
         "sidebar/scroll-end.html",
         "sidebar/variant-selector.html",
     ]

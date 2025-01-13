@@ -23,10 +23,9 @@ def test_auth_success(wsgi_server: str):
     state = faker.password()
     nonce = faker.password()
 
-    httpx.post(
-        f"{wsgi_server}/users",
+    httpx.patch(
+        f"{wsgi_server}/users/{subject}",
         json={
-            "sub": subject,
             "claims": {"custom": "CLAIM"},
             "userinfo": {"custom": "USERINFO"},
         },

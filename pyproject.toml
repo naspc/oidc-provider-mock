@@ -52,6 +52,7 @@ dev = [
   "faker>=33.3.1",
   "furo>=2024.8.6",
   "httpx>=0.28.1",
+  "myst-parser>=4.0.0",
   "oic>=1.7.0",
   "pyright>=1.1.391",
   "pytest-cov>=6.0.0",

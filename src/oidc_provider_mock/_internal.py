@@ -312,15 +312,14 @@ def userinfo():
 
 
 class UserCreatePayload(pydantic.BaseModel):
-    sub: str
     claims: dict[str, str] = pydantic.Field(default_factory=dict)
     userinfo: dict[str, object] = pydantic.Field(default_factory=dict)
 
 
-@blueprint.route("/users", methods=["POST"])
-def create_user():
+@blueprint.route("/users/<sub>", methods=["PATCH"])
+def create_user(sub: str):
     # TODO: document this endpoint for users
     payload = UserCreatePayload.model_validate(flask.request.json, strict=True)
-    user = User(sub=payload.sub, claims=payload.claims, userinfo=payload.userinfo)
+    user = User(sub=sub, claims=payload.claims, userinfo=payload.userinfo)
     State.current().update_user(user)
-    return "", HTTPStatus.CREATED
+    return "", HTTPStatus.NO_CONTENT
