@@ -334,7 +334,7 @@ def issue_token() -> flask.typing.ResponseReturnValue:
     return authorization.create_token_response()  # pyright: ignore
 
 
-@blueprint.route("/oauth/userinfo", methods=["GET", "POST"])
+@blueprint.route("/userinfo", methods=["GET", "POST"])
 @require_oauth()
 def userinfo():
     # TODO implement filtering by scope
@@ -349,7 +349,7 @@ class SetUserBody(pydantic.BaseModel):
     userinfo: dict[str, object] = pydantic.Field(default_factory=dict)
 
 
-@blueprint.route("/users/<sub>", methods=["PUT"])
+@blueprint.put("/users/<sub>")
 def set_user(sub: str):
     # TODO: Return 400 if validation fails
     payload = SetUserBody.model_validate(flask.request.json, strict=True)

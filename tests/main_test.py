@@ -1,3 +1,4 @@
+from http import HTTPStatus
 from urllib.parse import urlencode
 
 import flask.testing
@@ -60,15 +61,22 @@ def test_authorization_query_parsing(client: flask.testing.FlaskClient):
     assert "invalid response_type" in response.text
 
 
-@pytest.mark.skip
-def test_userinfo_unauthorized():
-    """
-    * `authorization` header missing
-    * `authorization` with wrong type
-    * `authorization` with invalid token
+def test_userinfo_unauthorized(client: flask.testing.FlaskClient):
+    response = client.get("/userinfo")
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.www_authenticate.type == "bearer"
+    assert response.json
+    assert response.json["error"] == "missing_authorization"
 
-    All return 400 error with description
-    """
+    response = client.get("/userinfo", headers={"authorization": "foo"})
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json == {"error": "unsupported_token_type"}
+
+    response = client.get("/userinfo", headers={"authorization": "Bearer foo"})
+    # TODO: should be unauthorized
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.json
+    assert response.json["error"] == "access_denied"
 
 
 @pytest.mark.skip
