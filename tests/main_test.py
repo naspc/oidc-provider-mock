@@ -72,11 +72,4 @@ def test_userinfo_unauthorized():
 
 
 @pytest.mark.skip
-def test_invalid_client_id(): ...
-
-
-def test_invalid_client_secret(): ...
-
-
-@pytest.mark.skip
 def test_refresh(): ...
