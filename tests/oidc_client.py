@@ -5,7 +5,7 @@ Experimental OpenID Connect client (Relying Party).
 import dataclasses
 import secrets
 from collections.abc import Sequence
-from typing import Literal, Self, cast
+from typing import Literal, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import authlib
@@ -261,6 +261,7 @@ def start_authorization(
     query = {
         "state": state,
         "client_id": client_id,
+        "response_type": "code",
         "redirect_uri": redirect_uri,
         "nonce": nonce_value,
     }
@@ -297,7 +298,7 @@ class TokenResponse:
     id_token: str
 
     @classmethod
-    def decode(cls, data: object) -> Self:
+    def decode(cls, data: object) -> "TokenResponse":
         # cache type adapter
         return pydantic.TypeAdapter(cls).validate_python(data)
 

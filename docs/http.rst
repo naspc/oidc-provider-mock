@@ -18,14 +18,14 @@ Query parameters:
   Redirection URI to which the response will be sent
 
 ``response_type`` (required)
-  Type of authorization response which also determines the OAuth2.0 flow
+  Type of authorization response which also determines the OAuth2.0 flow.
   Currently, only ``code`` is supported.
 
 .. _authorization endpoint: https://openid.net/specs/openid-connect-core-1_0.html#AuthorizationEndpoint
 
 
 
-``PATCH /users/{sub}``
+``PUT /users/{sub}``
 ----------------------
 
 Set user information to be included in responses in the ID token and the
@@ -44,4 +44,4 @@ The payload is a JSON document of the following shape:
       }
     }
 
-Claims and userinfo are merged into existing data from previous requests.
+Overrides any existing claims and userinfo for the subject.

@@ -34,6 +34,7 @@ dependencies = [
   "flask>=3.1.0",
   "pydantic>=2.10.4",
   "typer>=0.15.1",
+  "typing-extensions>=4.12.2",
   "uvicorn>=0.34.0",
 ]
 
@@ -42,14 +43,15 @@ oidc-provider-mock = "oidc_provider_mock.__main__:run"
 
 [project.urls]
 # https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
-homepage = "https://github.com/geigerzaehler/oidc-provider-mock"
-documentation = "https://github.com/geigerzaehler/oidc-provider-mock"
-source = "https://github.com/geigerzaehler/oidc-provider-mock"
-issues = "https://github.com/geigerzaehler/oidc-provider-mock/issues"
+Homepage = "https://github.com/geigerzaehler/oidc-provider-mock"
+Documentation = "https://github.com/geigerzaehler/oidc-provider-mock"
+Source = "https://github.com/geigerzaehler/oidc-provider-mock"
+Issues = "https://github.com/geigerzaehler/oidc-provider-mock/issues"
 
 [dependency-groups]
 dev = [
   "faker>=33.3.1",
+  "flask-oidc>=2.2.2",
   "furo>=2024.8.6",
   "httpx>=0.28.1",
   "myst-parser>=4.0.0",
@@ -67,27 +69,29 @@ dev = [
   "watchfiles>=1.0.3",
 ]
 
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
-live_server_scope = "function"
 addopts = """\
   --verbose \
   --cov-report term
   --cov-report html
   --tb=short
   """
-# filterwarnings = ["error"]
-typeguard-packages = """
-oidc_client
-oidc_provider_mock
-"""
+python_files = ["*_test.py", "*/examples/*.py"]
+filterwarnings = [
+  "error",
+  "ignore:Cannot resolve forward reference 'Response':typeguard.TypeHintWarning",
+  "ignore:datetime.datetime.utcnow:DeprecationWarning",
+]
 typeguard-debug-instrumentation = true
-typeguard-forward-ref-policy = "ERROR"
+typeguard-forward-ref-policy = "WARN"
 typeguard-collection-check-strategy = "ALL_ITEMS"
-
+# pytest-flask
+live_server_scope = "function"
 
 [tool.ruff.format]
 preview = true

@@ -12,14 +12,48 @@ $ pipx run oidc-provider-mock
 Started OpenID provider http://localhost:9400
 ```
 
-(TODO: package is not published yet)
-
 Configure the OpenID Connect client library in your app to use
 `http://localhost:9400` as the issuer URL.
 
 Now you can authenticate and authorize the app in the login form.
 
-(TODO: create video)
+You can use the server in your Python tests.
+
+```python
+@pytest.fixture
+def oidc_server():
+    logging.getLogger("oidc_provider_mock.server").setLevel(logging.DEBUG)
+    with oidc_provider_mock.run_server_in_thread() as server:
+        yield f"http://localhost:{server.server_port}"
+
+
+def test_login(client: flask.testing.FlaskClient, oidc_server: str):
+    # Let the OIDC provider know about the user’s email and name
+    response = httpx.put(
+        f"{oidc_server}/users/{quote('alice@example.com')}",
+        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+    )
+
+    # Start login on the client and get the authorization URL
+    response = client.get("/login")
+    assert response.location
+
+    # Authorize the client by POSTing to the authorization URL.
+    response = httpx.post(response.location, data={"sub": "alice@example.com"})
+
+    # Go back to the client with the authorization code
+    assert response.has_redirect_location
+    response = client.get(response.headers["location"])
+
+    # Check that we have been authenticated
+    assert response.location
+    response = client.get(response.location)
+    assert response.text == "Welcome Alice <alice@example.com>"
+```
+
+For all full testing example, see
+[`examples/flask_oidc_example.py`](../examples/flask_oidc_example.py)
+
 
 ## Alternatives
 

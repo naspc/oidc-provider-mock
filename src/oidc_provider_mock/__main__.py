@@ -24,7 +24,7 @@ def main(
         "oidc_provider_mock:app",
         factory=True,
         interface="wsgi",
-        port=9000,
+        port=9400,
         reload=reload,
         reload_includes=["*.py", "src/**/templates/*"] if reload else None,
     )

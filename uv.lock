@@ -382,6 +382,21 @@ wheels = [
 ]
 
 [[package]]
+name = "flask-oidc"
+version = "2.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "authlib" },
+    { name = "blinker" },
+    { name = "flask" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/a6/0e7552db38bf23d92741c593c5d0b5563a67e236630acc6e137ceda12ded/flask_oidc-2.2.2.tar.gz", hash = "sha256:a197ca54c92c0765e0954668cfb7b3d5a0b55ef083456996051096fa29d7c874", size = 25257 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/49/a148d50e71946a6f9911aa7b9ec3540607e2a2e3930a12e80eacc40cfe41/flask_oidc-2.2.2-py3-none-any.whl", hash = "sha256:c2458254994505c03c9daa0c6b82cc7ff91b7b6558048b8643de6fbb829306d7", size = 9462 },
+]
+
+[[package]]
 name = "furo"
 version = "2024.8.6"
 source = { registry = "https://pypi.org/simple" }
@@ -639,19 +654,21 @@ wheels = [
 
 [[package]]
 name = "oidc-provider-mock"
-version = "0.0.1.dev1"
+version = "0.0.1a2.dev1"
 source = { editable = "." }
 dependencies = [
     { name = "authlib" },
     { name = "flask" },
     { name = "pydantic" },
     { name = "typer" },
+    { name = "typing-extensions" },
     { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "faker" },
+    { name = "flask-oidc" },
     { name = "furo" },
     { name = "httpx" },
     { name = "myst-parser" },
@@ -675,12 +692,14 @@ requires-dist = [
     { name = "flask", specifier = ">=3.1.0" },
     { name = "pydantic", specifier = ">=2.10.4" },
     { name = "typer", specifier = ">=0.15.1" },
+    { name = "typing-extensions", specifier = ">=4.12.2" },
     { name = "uvicorn", specifier = ">=0.34.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "faker", specifier = ">=33.3.1" },
+    { name = "flask-oidc", specifier = ">=2.2.2" },
     { name = "furo", specifier = ">=2024.8.6" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "myst-parser", specifier = ">=4.0.0" },

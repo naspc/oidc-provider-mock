@@ -11,7 +11,7 @@ def test_cli():
         text=True,
     ) as process:
         try:
-            base_url = "http://127.0.0.1:9000"
+            base_url = "http://127.0.0.1:9400"
             response = None
             for _ in range(5):
                 try:

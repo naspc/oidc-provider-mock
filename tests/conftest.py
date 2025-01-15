@@ -1,47 +1,44 @@
-import logging
-import threading
-import wsgiref.simple_server
-import wsgiref.types
-from collections.abc import Iterator
+import functools
+from collections.abc import Callable, Iterator
 
 import pytest
+import typeguard
 
-import oidc_provider_mock
-
-_logger = logging.getLogger(__name__)
+typeguard.install_import_hook("oidc_provider_mock")
+import oidc_provider_mock  # noqa: E402
 
 
 @pytest.fixture
 def app():
-    return oidc_provider_mock.app()
-
-
-class _WSGIRequestHandler(wsgiref.simple_server.WSGIRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
-        _logger.log(logging.INFO, format % args)
+    app = oidc_provider_mock.app()
+    # Use localhost with port so that https is not required
+    app.config["SERVER_NAME"] = "localhost:54321"
+    return app
 
 
 @pytest.fixture
 def wsgi_server() -> Iterator[str]:
-    server = wsgiref.simple_server.make_server(
-        "localhost",
-        0,
-        oidc_provider_mock.app(),
-        handler_class=_WSGIRequestHandler,
-    )
-
-    def run():
-        try:
-            server.serve_forever(0.01)
-        finally:
-            server.server_close()
-
-    thread = threading.Thread(target=run)
-    thread.start()
-
-    try:
+    with oidc_provider_mock.run_server_in_thread() as server:
         yield f"http://localhost:{server.server_port}"
 
-    finally:
-        server.shutdown()
-        thread.join()
+
+def with_server(
+    require_client_registration: bool = False,
+) -> Callable[
+    [Callable[[str], None]],
+    Callable[[], None],
+]:
+    def decorate(test_fn: Callable[[str], None]) -> Callable[[], None]:
+        @functools.wraps(test_fn)
+        def wrapped_test_fn():
+            with oidc_provider_mock.run_server_in_thread(
+                require_client_registration=require_client_registration
+            ) as server:
+                test_fn(f"http://localhost:{server.server_port}")
+
+        # Prevent pytest from considering argument to the original test function
+        # as a fixture.
+        del wrapped_test_fn.__wrapped__
+        return wrapped_test_fn
+
+    return decorate
