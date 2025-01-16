@@ -33,7 +33,6 @@ dependencies = [
   "authlib>=1.4.0",
   "flask>=3.1.0",
   "pydantic>=2.10.4",
-  "typer>=0.15.1",
   "typing-extensions>=4.12.2",
   "uvicorn>=0.34.0",
 ]

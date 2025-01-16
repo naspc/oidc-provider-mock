@@ -179,33 +179,15 @@ def test_client_auth_methods(wsgi_server: str, auth_method: str):
     subject = faker.email()
     state = faker.password()
 
-    client = oic.oic.Client(client_authn_method=CLIENT_AUTHN_METHOD)
-    client.redirect_uris = [faker.uri(schemes=["https"])]
-    config = client.provider_config(wsgi_server)
-    client.register(config["registration_endpoint"])
-    login_url = client.construct_AuthorizationRequest(
-        request_args={
-            "response_type": "code",
-            "state": state,
-        }
-    ).request(client.authorization_endpoint)
-
-    response = httpx.post(login_url, data={"sub": subject})
-
-    location = urlsplit(response.headers["location"])
-    response = client.parse_response(
-        oic.oic.message.AuthorizationResponse, info=location.query, sformat="urlencoded"
-    )
-
-    response = client.do_access_token_request(
-        state=state,
-        code=response["code"],
-        authn_method=auth_method,
-    )
+    client = OidcClient(wsgi_server)
+    client.register()
+    auth_url = client.build_authorization_request(state=state)
+    response = httpx.post(auth_url, data={"sub": subject})
+    response = client.fetch_token(response.headers["location"], state)
 
     assert response["id_token"]["sub"] == subject
 
-    userinfo = client.do_user_info_request(token=response["access_token"])
+    userinfo = client.fetch_userinfo(token=response["access_token"])
     assert userinfo["sub"] == subject
 
 
@@ -213,31 +195,63 @@ def test_no_openid_scope(wsgi_server: str):
     subject = faker.email()
     state = faker.password()
 
-    client = oic.oic.Client(client_authn_method=CLIENT_AUTHN_METHOD)
-    client.provider_config(wsgi_server)
-    client.store_registration_info({
-        "client_id": faker.uuid4(),
-        "client_secret": faker.password(),
-    })
-    login_url = client.construct_AuthorizationRequest(
-        request_args={
-            "redirect_uri": faker.uri(schemes=["https"]),
-            "response_type": "code",
-            "state": state,
-            "scope": "foo bar",
-        }
-    ).request(client.authorization_endpoint)
+    client = OidcClient(wsgi_server)
 
-    response = httpx.post(login_url, data={"sub": subject})
-
-    location = urlsplit(response.headers["location"])
-    response = client.parse_response(
-        oic.oic.message.AuthorizationResponse, info=location.query, sformat="urlencoded"
-    )
-    response = client.do_access_token_request(
-        state=state,
-        code=response["code"],
+    response = httpx.post(
+        client.build_authorization_request(state=state, scope="foo bar"),
+        data={"sub": subject},
     )
 
+    response = client.fetch_token(response.headers["location"], state)
     assert response["token_type"] == "Bearer"
     assert "id_token" not in response
+
+
+class OidcClient:
+    _oic_client: oic.oic.Client
+
+    def __init__(self, issuer: str) -> None:
+        self._oic_client = oic.oic.Client(client_authn_method=CLIENT_AUTHN_METHOD)
+        self._oic_client.provider_config(issuer)
+
+        self._oic_client.store_registration_info({
+            "client_id": faker.uuid4(),
+            "client_secret": faker.password(),
+        })
+        self._oic_client.redirect_uris = [faker.uri(schemes=["https"])]
+
+    def register(self):
+        self._oic_client.register(self._oic_client.registration_endpoint)  # type: ignore
+
+    def build_authorization_request(
+        self, *, state: str, scope: str = "openid", response_type: str = "code"
+    ):
+        return self._oic_client.construct_AuthorizationRequest(
+            request_args={
+                "response_type": response_type,
+                "state": state,
+                "scope": scope,
+            }
+        ).request(self._oic_client.authorization_endpoint)
+
+    def fetch_token(self, auth_response_location: str, state: str):
+        location = urlsplit(auth_response_location)
+        response = self._oic_client.parse_response(
+            oic.oic.message.AuthorizationResponse,
+            info=location.query,
+            sformat="urlencoded",
+        )
+        response = self._oic_client.do_access_token_request(
+            state=state,
+            code=response["code"],
+        )
+
+        assert isinstance(
+            response,
+            oic.oic.message.AccessTokenResponse | oic.oic.message.TokenErrorResponse,
+        )
+
+        return response
+
+    def fetch_userinfo(self, token: str):
+        return self._oic_client.do_user_info_request(token=token)

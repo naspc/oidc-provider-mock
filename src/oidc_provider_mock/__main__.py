@@ -1,32 +1,28 @@
-from typing import Annotated
-
-import typer
+import click
 import uvicorn
 
-run = typer.Typer(
-    pretty_exceptions_enable=False,
-    rich_markup_mode=None,
+from . import app
+
+
+@click.command()
+@click.option(
+    "-r",
+    "--require-registration",
+    is_flag=True,
+    help="Require client to register before they can request authentication",
 )
-
-
-@run.command()
-def main(
-    reload: Annotated[
-        bool,
-        typer.Option(
-            help="Reload the server when code or templates change",
-            hidden=True,  # Only used for development
-        ),
-    ] = False,
-):
+@click.option(
+    "-p",
+    "--port",
+    help="Port to start server on",
+    default=9400,
+)
+def run(require_registration: bool, port: int):
     """Start an OpenID Connect Provider for testing"""
     uvicorn.run(
-        "oidc_provider_mock:app",
-        factory=True,
+        app(require_client_registration=require_registration),
         interface="wsgi",
-        port=9400,
-        reload=reload,
-        reload_includes=["*.py", "src/**/templates/*"] if reload else None,
+        port=port,
     )
 
 

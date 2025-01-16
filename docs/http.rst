@@ -5,7 +5,7 @@ HTTP Endpoints
 -------------------------
 
 
-OpenID Connect `authorization endpoint`_. On a `GET`, show an authentication
+OpenID Connect `authorization endpoint`_. On a ``GET``, show an authentication
 form to the user. Submitting the form will redirect to the relying party that
 requested the authentication.
 

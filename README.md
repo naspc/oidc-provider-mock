@@ -13,11 +13,12 @@ Started OpenID provider http://localhost:9400
 ```
 
 Configure the OpenID Connect client library in your app to use
-`http://localhost:9400` as the issuer URL.
+`http://localhost:9400` as the issuer URL. You can use any client ID and client
+secret with the provider.
 
 Now you can authenticate and authorize the app in the login form.
 
-You can use the server in your Python tests.
+Take a look at the following example for using the server in a test.
 
 ```python
 @pytest.fixture
