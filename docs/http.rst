@@ -28,10 +28,10 @@ Query parameters:
 ``PUT /users/{sub}``
 ----------------------
 
-Set user information to be included in responses in the ID token and the
-userinfo endpoint.
+Set user information to be included in the ID token and the userinfo endpoint.
 
-The payload is a JSON document of the following shape:
+The user is identified by ``sub``. The request body is a JSON document of the
+following shape:
 
 .. code:: json
 
@@ -43,5 +43,7 @@ The payload is a JSON document of the following shape:
           "avatar_url": "https://example.com/alice.jpg"
       }
     }
+
+You can any property to the ``claims`` and ``userinfo`` values.
 
 Overrides any existing claims and userinfo for the subject.

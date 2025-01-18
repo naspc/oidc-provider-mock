@@ -237,7 +237,7 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
 def app(*, require_client_registration: bool = False) -> flask.Flask:
     """Create a flask app for the OpenID provider.
 
-    Call :any:`app().run() <flask.Flask.run>` to start the server.
+    Call ``app().run()`` (see `flask.Flask.run`) to start the server.
 
 
     :param require_client_registration: If false (the default) any client ID and
