@@ -45,11 +45,12 @@ html_sidebars = {
     "**": [
         "sidebar/brand.html",
         "sidebar/scroll-start.html",
-        # "sidebar/search.html",
+        # "sidebar/search.html", disabled
         "sidebar/navigation.html",
-        # "sidebar/ethical-ads.html",
         "sidebar_bottom.html",
         "sidebar/scroll-end.html",
-        "sidebar/variant-selector.html",
+        # Only shown on RTD. If we don’t include this explicitly RTD will put it
+        # in an odd location.
+        "sidebar/ethical-ads.html",
     ]
 }
