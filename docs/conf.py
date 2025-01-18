@@ -13,8 +13,9 @@ sys.path.insert(0, str(Path("..", "src").resolve()))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "oidc-provider-mock"
-copyright = "2025, Thomas Scholtes"
+copyright = "© 2025- Thomas Scholtes"
 author = "Thomas Scholtes"
+version = "4.2"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -38,19 +39,11 @@ intersphinx_mapping = {
     "flask": ("https://flask.palletsprojects.com/en/stable/", None),
 }
 
-html_theme = "furo"
 templates_path = ["_templates"]
 html_title = "OIDC Provider Mock"
-html_sidebars = {
-    "**": [
-        "sidebar/brand.html",
-        "sidebar/scroll-start.html",
-        # "sidebar/search.html", disabled
-        "sidebar/navigation.html",
-        "sidebar_bottom.html",
-        "sidebar/scroll-end.html",
-        # Only shown on RTD. If we don’t include this explicitly RTD will put it
-        # in an odd location.
-        "sidebar/ethical-ads.html",
-    ]
+html_theme = "shibuya"
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
+html_theme_options = {
+    "github_url": f"https://github.com/geigerzaehler/{project}",
 }
