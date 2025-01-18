@@ -1,9 +1,11 @@
+import logging
 import secrets
+import textwrap
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
-from typing import cast
+from typing import TypeVar, cast
 from uuid import uuid4
 
 import authlib.oauth2.rfc6749
@@ -13,6 +15,7 @@ import authlib.oidc.core.grants
 import flask
 import flask.typing
 import pydantic
+import werkzeug.exceptions
 from authlib import jose
 from authlib.integrations import flask_oauth2
 from authlib.oauth2 import OAuth2Request
@@ -23,11 +26,15 @@ from ._storage import (
     AccessToken,
     AuthorizationCode,
     Client,
-    ClientSkipVerification,
+    ClientAllowAny,
+    ClientAuthMethod,
     Storage,
     User,
     storage,
 )
+
+assert __package__
+_logger = logging.getLogger(__package__)
 
 
 class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
@@ -50,22 +57,24 @@ class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
 
     @override
     def check_redirect_uri(self, redirect_uri: str) -> bool:
-        if isinstance(self._client.redirect_uris, ClientSkipVerification):
+        if isinstance(self._client.redirect_uris, ClientAllowAny):
             return True
 
         return redirect_uri in self._client.redirect_uris
 
     @override
     def check_client_secret(self, client_secret: str) -> bool:
-        if type(self._client.secret) is ClientSkipVerification:
+        if isinstance(self._client.secret, ClientAllowAny):
             return True
 
         return client_secret == self._client.secret
 
-    # TODO
     @override
     def check_endpoint_auth_method(self, method: str, endpoint: object):
-        return method in {"client_secret_post", "client_secret_basic"}
+        if isinstance(self._client.token_endpoint_auth_method, ClientAllowAny):
+            return True
+
+        return method == self._client.token_endpoint_auth_method.value
 
     # TODO
     @override
@@ -119,12 +128,6 @@ class AuthorizationCodeGrant(authlib.oauth2.rfc6749.AuthorizationCodeGrant):
                 nonce=request.data.get("nonce"),  # type: ignore
             )
         )
-
-    # @override
-    # def validate_authorization_request(self):
-    #     if "scope" not in self.request.scope.split(" "):
-    #         raise
-    #     return super().validate_authorization_request()
 
 
 class OpenIdGrantExtension:
@@ -192,8 +195,9 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
         if not client and not config.require_client_registration:
             client = Client(
                 id=id,
-                secret=ClientSkipVerification(),
-                redirect_uris=ClientSkipVerification(),
+                secret=ClientAllowAny(),
+                redirect_uris=ClientAllowAny(),
+                token_endpoint_auth_method=ClientAllowAny(),
             )
 
         if client:
@@ -287,24 +291,27 @@ def jwks():
 
 class RegisterClientBody(pydantic.BaseModel):
     redirect_uris: Sequence[pydantic.HttpUrl]
+    token_endpoint_auth_method: ClientAuthMethod = ClientAuthMethod.SecretBasic
 
 
 @blueprint.post("/register-client")
 def register_client():
-    payload = RegisterClientBody.model_validate(flask.request.json)
+    body = RegisterClientBody.model_validate(flask.request.json)
 
     client = Client(
         id=str(uuid4()),
         secret=secrets.token_urlsafe(16),
-        redirect_uris=[str(uri) for uri in payload.redirect_uris],
+        redirect_uris=[str(uri) for uri in body.redirect_uris],
+        token_endpoint_auth_method=body.token_endpoint_auth_method,
     )
+
     storage.store_client(client)
     return flask.jsonify({
         "client_id": client.id,
         "client_secret": client.secret,
         "redirect_uris": client.redirect_uris,
+        "token_endpoint_auth_method": body.token_endpoint_auth_method.value,
         # For now, limit the accepted flow configuration
-        "token_endpoint_auth_method": ["client_secret_basic"],
         "grant_types": ["authorization_code"],
         "response_types": ["code"],
     }), HTTPStatus.CREATED
@@ -321,6 +328,11 @@ def authorize() -> flask.typing.ResponseReturnValue:
 
         return flask.render_template("authorization_form.html")
     else:
+        if flask.request.form.get("action") == "deny":
+            return authorization.handle_response(  # pyright: ignore[reportUnknownMemberType]
+                *AccessDeniedError(redirect_uri=flask.request.args["redirect_uri"])()
+            )
+
         # TODO: validate sub
         user = storage.get_user(flask.request.form["sub"])
         if not user:
@@ -351,7 +363,54 @@ class SetUserBody(pydantic.BaseModel):
 
 @blueprint.put("/users/<sub>")
 def set_user(sub: str):
-    # TODO: Return 400 if validation fails
-    payload = SetUserBody.model_validate(flask.request.json, strict=True)
-    storage.store_user(User(sub=sub, claims=payload.claims, userinfo=payload.userinfo))
+    body = validate_body(flask.request, SetUserBody)
+    storage.store_user(User(sub=sub, claims=body.claims, userinfo=body.userinfo))
     return "", HTTPStatus.NO_CONTENT
+
+
+_Model = TypeVar("_Model", bound=pydantic.BaseModel)
+
+
+def validate_body(request: flask.Request, model: type[_Model]) -> _Model:
+    _logger.error("JO")
+    try:
+        return model.model_validate(request.json, strict=True)
+    except pydantic.ValidationError as error:
+        _logger.info(
+            f"invalid request body {request.method} {request.url}\n{textwrap.indent(str(error), '  ')}",
+            extra={
+                "_msg": "invalid request body",
+                "method": request.method,
+                "url": request.url,
+                "error": error,
+            },
+        )
+
+        # TODO: support content type negotiation with html and json
+        msg = "Invalid body:\n"
+        for detail in error.errors():
+            loc = detail.get("loc")
+            if loc:
+                msg += f"- {_pydantic_loc_to_path(loc)}:"
+            msg += f" {detail.get('msg')}\n"
+
+        raise werkzeug.exceptions.HTTPException(
+            response=flask.make_response(
+                msg,
+                HTTPStatus.BAD_REQUEST,
+                {"content-type": "text/plain; charset=utf-8"},
+            )
+        ) from error
+
+
+def _pydantic_loc_to_path(loc: tuple[str | int, ...]) -> str:
+    path = ""
+    for i, x in enumerate(loc):
+        match x:
+            case str():
+                if i > 0:
+                    path += "."
+                path += x
+            case int():
+                path += f"[{x}]"
+    return path

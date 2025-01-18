@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import cast
 
 import authlib.oauth2.rfc6749
@@ -11,17 +12,23 @@ from authlib import jose
 from typing_extensions import override
 
 
-class ClientSkipVerification:
-    """Special value for client secret and redirect URIs that indicates that
-    verification is skipped."""
+class ClientAllowAny:
+    """Special value for client fields that skips validation of the field."""
+
+
+class ClientAuthMethod(Enum):
+    NoneAuth = "none"
+    SecretBasic = "client_secret_basic"
+    SecretPost = "client_secret_post"
 
 
 @dataclass(kw_only=True, frozen=True)
 class Client:
     id: str
-    secret: str | ClientSkipVerification
-    redirect_uris: Sequence[str] | ClientSkipVerification
+    secret: str | ClientAllowAny
+    redirect_uris: Sequence[str] | ClientAllowAny
     allowed_scopes: Sequence[str] = ("openid", "profile")
+    token_endpoint_auth_method: ClientAuthMethod | ClientAllowAny
 
 
 @dataclass(kw_only=True, frozen=True)

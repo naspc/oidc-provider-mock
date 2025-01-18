@@ -32,7 +32,6 @@ def run_server_in_thread(
     ...     print(f"Server listening at http://localhost:{server.server_port}")
     Server listening at http://localhost:35432
     """
-    # TODO: document
     server = wsgiref.simple_server.make_server(
         "localhost",
         port,
