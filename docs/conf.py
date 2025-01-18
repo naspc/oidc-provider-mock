@@ -3,8 +3,18 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import os
+import re
 import sys
 from pathlib import Path
+
+import docutils.nodes
+import sphinx.addnodes
+from sphinx.application import Sphinx
+from sphinx.builders import Builder
+from sphinx.domains import Domain
+from sphinx.environment import BuildEnvironment
+from typing_extensions import override
 
 # Allow autodoc to import modules
 sys.path.insert(0, str(Path("..", "src").resolve()))
@@ -15,16 +25,13 @@ sys.path.insert(0, str(Path("..", "src").resolve()))
 project = "oidc-provider-mock"
 copyright = "© 2025- Thomas Scholtes"
 author = "Thomas Scholtes"
-version = "4.2"
+
+github_url = f"https://github.com/geigerzaehler/{project}"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 default_role = "any"
-
-
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -39,11 +46,43 @@ intersphinx_mapping = {
     "flask": ("https://flask.palletsprojects.com/en/stable/", None),
 }
 
+# -- Options for HTML output -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+
+
 templates_path = ["_templates"]
 html_title = "OIDC Provider Mock"
 html_theme = "shibuya"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
-html_theme_options = {
-    "github_url": f"https://github.com/geigerzaehler/{project}",
-}
+html_theme_options = {"github_url": f"https://github.com/geigerzaehler/{project}"}
+
+github_ref = os.getenv("READTHEDOCS_GIT_IDENTIFIER", "main")
+github_src_url = f"{github_url}/blob/{github_ref}"
+
+
+class GithubSourceDomain(Domain):
+    @override
+    def resolve_any_xref(
+        self,
+        env: BuildEnvironment,
+        fromdocname: str,
+        builder: Builder,
+        target: str,
+        node: sphinx.addnodes.pending_xref,
+        contnode: docutils.nodes.Element,
+    ) -> list[tuple[str, docutils.nodes.Element]]:
+        if not re.match(r"\Aexamples/.*\.py\Z", target):
+            return []
+
+        reference = docutils.nodes.reference(
+            refuri=f"{github_src_url}/{target}",
+            internal=False,
+        )
+        reference.append(contnode)
+
+        return [("github:link", reference)]
+
+
+def setup(app: Sphinx):
+    app.add_domain(GithubSourceDomain)

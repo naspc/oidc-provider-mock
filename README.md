@@ -1,7 +1,15 @@
 # OpenID Provider Mock
 
+[![PyPI version](https://img.shields.io/pypi/v/oidc-provider-mock)](https://pypi.org/project/oidc-provider-mock/)
+[![main](https://github.com/geigerzaehler/oidc-provider-mock/actions/workflows/main.yaml/badge.svg)](https://github.com/geigerzaehler/oidc-provider-mock/actions/workflows/main.yaml)
+[![documentation](https://readthedocs.org/projects/oidc-provider-mock/badge/?version=latest)][docs]
+
 > A mock OpenID Provider server to test and develop OpenID Connect
 > authentication.
+
+You can find the full documentation [here][docs].
+
+[docs]: https://oidc-provider-mock.readthedocs.io/latest/
 
 ## Usage
 
@@ -53,8 +61,7 @@ def test_login(client: flask.testing.FlaskClient, oidc_server: str):
 ```
 
 For all full testing example, see
-[`examples/flask_oidc_example.py`](../examples/flask_oidc_example.py)
-
+[`examples/flask_oidc_example.py`](examples/flask_oidc_example.py)
 
 ## Alternatives
 
@@ -63,21 +70,21 @@ how they differ from this project (to the best of my knowledge):
 
 [`axa-group/oauth2-mock-server`](https://github.com/axa-group/oauth2-mock-server)
 
-* Does not offer a HTML login form where the subject can be input or
+- Does not offer a HTML login form where the subject can be input or
   authorization denied.
-* Behavior can only be customized through the JavaScript API.
+- Behavior can only be customized through the JavaScript API.
 
 [`Soluto/oidc-server-mock`](https://github.com/Soluto/oidc-server-mock)
 
-* Identities (users) and clients must be statically configured.
-* Requires a non-trivial amount of configuration before it can be used.
+- Identities (users) and clients must be statically configured.
+- Requires a non-trivial amount of configuration before it can be used.
 
 [`oauth2-proxy/mockoidc`](https://github.com/oauth2-proxy/mockoidc`)
 
-* Does not have a CLI, only available as a Go library
+- Does not have a CLI, only available as a Go library
 
 <https://oauth.wiremockapi.cloud/>
 
-* Only a hosted version exists
-* Claims and user info cannot be customized
-* Cannot simulate errors
+- Only a hosted version exists
+- Claims and user info cannot be customized
+- Cannot simulate errors
