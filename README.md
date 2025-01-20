@@ -52,11 +52,9 @@ def test_login(client: flask.testing.FlaskClient, oidc_server: str):
 
     # Go back to the client with the authorization code
     assert response.has_redirect_location
-    response = client.get(response.headers["location"])
+    response = client.get(response.headers["location"], follow_redirects=True)
 
     # Check that we have been authenticated
-    assert response.location
-    response = client.get(response.location)
     assert response.text == "Welcome Alice <alice@example.com>"
 ```
 
