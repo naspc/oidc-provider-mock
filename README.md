@@ -36,9 +36,9 @@ def oidc_server():
         yield f"http://localhost:{server.server_port}"
 
 
-def test_login(client: flask.testing.FlaskClient, oidc_server: str):
+def test_login(client, oidc_server):
     # Let the OIDC provider know about the user’s email and name
-    response = httpx.put(
+    httpx.put(
         f"{oidc_server}/users/{quote('alice@example.com')}",
         json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
     )
@@ -60,6 +60,28 @@ def test_login(client: flask.testing.FlaskClient, oidc_server: str):
 
 For all full testing example, see
 [`examples/flask_oidc_example.py`](examples/flask_oidc_example.py)
+
+If you’re using [Playwright](https://playwright.dev) for end-to-end tests, a
+login test looks like this:
+
+```python
+def test_auth_code_login_playwright(live_server, page, oidc_server):
+    # Let the OIDC provider know about the user’s email and name
+    httpx.put(
+        f"{oidc_server}/users/{quote('alice@example.com')}",
+        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+    )
+
+    # Start login and be redirected to the provider
+    page.goto(live_server.url("/login"))
+
+    # Authorize with the provider
+    page.get_by_placeholder("sub").fill("alice@example.com")
+    page.get_by_role("button", name="Authorize").click()
+
+    # Verify that we’re logged in
+    expect(page.locator("body")).to_contain_text("Welcome Alice (alice@example.com)")
+```
 
 ## Alternatives
 

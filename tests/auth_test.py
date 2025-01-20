@@ -9,9 +9,10 @@ import oic
 import oic.oic
 import oic.oic.message
 import pytest
-from conftest import with_server
 from faker import Faker
-from test_oidc_client import AuthorizationError, OidcClient
+
+from .conftest import with_server
+from .test_oidc_client import AuthorizationError, OidcClient
 
 faker = Faker()
 

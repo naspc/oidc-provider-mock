@@ -12,27 +12,34 @@ import flask.testing
 import httpx
 import pytest
 from flask_oidc import OpenIDConnect
+from playwright.sync_api import Page, expect
+from pytest_flask.live_server import LiveServer
 
 import oidc_provider_mock
 
-app = flask.Flask(__name__)
-app.config.update({
-    "OIDC_CLIENT_SECRETS": Path(__file__).parent / "flask_oidc_client_secrets.json",
-    "SECRET_KEY": "some secret",
-})
 
+def build_app():
+    app = flask.Flask(__name__)
+    app.config.update({
+        "OIDC_CLIENT_SECRETS": Path(__file__).parent / "flask_oidc_client_secrets.json",
+        "SECRET_KEY": "some secret",
+        "SERVER_NAME": "localhost",
+    })
 
-@app.route("/")
-def index():
-    user = flask.g.oidc_user
-    if user.logged_in:
-        return f"Welcome {user.profile['name']} <{user.email}>"
-    else:
-        return "Not logged in"
+    @app.route("/")
+    def index():
+        user = flask.g.oidc_user
+        if user.logged_in:
+            return f"Welcome {user.profile['name']} ({user.email})"
+        else:
+            return "Not logged in"
+
+    return app
 
 
 @pytest.fixture(name="app")
-def app_fixture(oidc_server: str):
+def app(oidc_server: str):
+    app = build_app()
     app.config["OIDC_SERVER_METADATA_URL"] = (
         f"{oidc_server}/.well-known/openid-configuration"
     )
@@ -53,6 +60,7 @@ def test_auth_code_login(client: flask.testing.FlaskClient, oidc_server: str):
         f"{oidc_server}/users/{quote('alice@example.com')}",
         json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
     )
+    assert response.status_code == 204
 
     # Start login on the client and get the authorization URL
     response = client.get("/login")
@@ -66,7 +74,28 @@ def test_auth_code_login(client: flask.testing.FlaskClient, oidc_server: str):
     response = client.get(response.headers["location"], follow_redirects=True)
 
     # Check that we have been authenticated
-    assert response.text == "Welcome Alice <alice@example.com>"
+    assert response.text == "Welcome Alice (alice@example.com)"
+
+
+def test_auth_code_login_playwright(
+    live_server: LiveServer, oidc_server: str, page: Page
+):
+    # Let the OIDC provider know about the user’s email and name
+    response = httpx.put(
+        f"{oidc_server}/users/{quote('alice@example.com')}",
+        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+    )
+    assert response.status_code == 204
+
+    # Start login and be redirected to the provider
+    page.goto(live_server.url("/login"))
+
+    # Authorize with the provider
+    page.get_by_placeholder("sub").fill("alice@example.com")
+    page.get_by_role("button", name="Authorize").click()
+
+    # Verify that we’re logged in
+    expect(page.locator("body")).to_contain_text("Welcome Alice (alice@example.com)")
 
 
 if __name__ == "__main__":
