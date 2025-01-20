@@ -42,7 +42,7 @@ def app_fixture(oidc_server: str):
 
 @pytest.fixture
 def oidc_server():
-    logging.getLogger("oidc_provider_mock.server").setLevel(logging.DEBUG)
+    logging.getLogger("oidc_provider_mock").setLevel(logging.DEBUG)
     with oidc_provider_mock.run_server_in_thread() as server:
         yield f"http://localhost:{server.server_port}"
 

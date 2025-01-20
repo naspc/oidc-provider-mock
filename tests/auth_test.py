@@ -100,13 +100,11 @@ def test_client_not_registered(wsgi_server: str):
         data={"sub": faker.email()},
     )
 
-    # TODO: This should not result in a 400 with json body. Either HTML or
+    # TODO: Render an HTML error
     # auth error response redirect.
     assert response.status_code == HTTPStatus.BAD_REQUEST
-    assert response.json() == {
-        "error": "invalid_client",
-        "state": state,
-    }
+    assert "Error: invalid_client" in response.text
+    assert "Invalid client_id query parameter" in response.text
 
 
 def test_wrong_client_secret(wsgi_server: str):
@@ -115,6 +113,7 @@ def test_wrong_client_secret(wsgi_server: str):
 
     client = OidcClient.register(wsgi_server, redirect_uri=redirect_uri)
 
+    # Create a second client with the same ID but different secret
     client = OidcClient(wsgi_server, id=client.id, redirect_uri=redirect_uri)
 
     response = httpx.post(

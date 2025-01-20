@@ -16,8 +16,10 @@ import flask
 import flask.typing
 import pydantic
 import werkzeug.exceptions
+import werkzeug.local
 from authlib import jose
 from authlib.integrations import flask_oauth2
+from authlib.integrations.flask_oauth2.authorization_server import FlaskOAuth2Request
 from authlib.oauth2 import OAuth2Request
 from authlib.oauth2.rfc6749 import AccessDeniedError
 from typing_extensions import override
@@ -49,7 +51,10 @@ class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
 
     @override
     def get_default_redirect_uri(self) -> str:
-        raise NotImplementedError()
+        if isinstance(self._client.redirect_uris, ClientAllowAny):
+            return "https://example.com"
+
+        return self._client.redirect_uris[0]
 
     @override
     def get_allowed_scope(self, scope: str) -> str:
@@ -74,7 +79,7 @@ class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
         if isinstance(self._client.token_endpoint_auth_method, ClientAllowAny):
             return True
 
-        return method == self._client.token_endpoint_auth_method.value
+        return method == self._client.token_endpoint_auth_method
 
     # TODO
     @override
@@ -161,10 +166,12 @@ class HybridGrant(OpenIdGrantExtension, authlib.oidc.core.OpenIDHybridGrant):
     pass
 
 
-# TODO: turn  into context variables
-authorization = flask_oauth2.AuthorizationServer()
 require_oauth = flask_oauth2.ResourceProtector()
 
+authorization = cast(
+    "flask_oauth2.AuthorizationServer",
+    werkzeug.local.LocalProxy(lambda: flask.g._authlib_authorization_server),
+)
 
 blueprint = flask.Blueprint("oidc-provider-mock-authlib", __name__)
 
@@ -184,11 +191,13 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
             f"Expected {Config.__name__} as `config` option for blueprint, got {type(config)}"
         )
 
+    authorization = flask_oauth2.AuthorizationServer()
     storage = Storage()
 
     @setup_state.app.before_request
-    def set_storage():
+    def set_globals():
         flask.g.oidc_provider_mock_storage = storage
+        flask.g._authlib_authorization_server = authorization
 
     def query_client(id: str) -> AuthlibClient | None:
         client = storage.get_client(id)
@@ -235,6 +244,9 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
     authorization.register_grant(ImplicitGrant)  # type: ignore
     authorization.register_grant(HybridGrant)  # type: ignore
 
+
+@blueprint.record_once
+def setup_once(setup_state: flask.blueprints.BlueprintSetupState):
     require_oauth.register_token_validator(TokenValidator())
 
 
@@ -291,12 +303,12 @@ def jwks():
 
 class RegisterClientBody(pydantic.BaseModel):
     redirect_uris: Sequence[pydantic.HttpUrl]
-    token_endpoint_auth_method: ClientAuthMethod = ClientAuthMethod.SecretBasic
+    token_endpoint_auth_method: ClientAuthMethod = "client_secret_basic"
 
 
 @blueprint.post("/register-client")
 def register_client():
-    body = RegisterClientBody.model_validate(flask.request.json)
+    body = _validate_body(flask.request, RegisterClientBody)
 
     client = Client(
         id=str(uuid4()),
@@ -310,7 +322,7 @@ def register_client():
         "client_id": client.id,
         "client_secret": client.secret,
         "redirect_uris": client.redirect_uris,
-        "token_endpoint_auth_method": body.token_endpoint_auth_method.value,
+        "token_endpoint_auth_method": body.token_endpoint_auth_method,
         # For now, limit the accepted flow configuration
         "grant_types": ["authorization_code"],
         "response_types": ["code"],
@@ -319,13 +331,10 @@ def register_client():
 
 @blueprint.route("/oauth2/authorize", methods=["GET", "POST"])
 def authorize() -> flask.typing.ResponseReturnValue:
-    if flask.request.method == "GET":
-        # Validates request parameters
-        try:
-            authorization.get_consent_grant()  # type: ignore
-        except authlib.oauth2.rfc6749.errors.InvalidClientError as e:
-            raise NotImplementedError() from e
+    request = FlaskOAuth2Request(flask.request)
+    grant, redirect_uri = _validate_auth_request_client_params(flask.request)
 
+    if flask.request.method == "GET":
         return flask.render_template("authorization_form.html")
     else:
         if flask.request.form.get("action") == "deny":
@@ -338,7 +347,71 @@ def authorize() -> flask.typing.ResponseReturnValue:
         if not user:
             user = User(sub=flask.request.form["sub"])
             storage.store_user(user)
-        return authorization.create_authorization_response(grant_user=user)  # type: ignore
+
+        try:
+            args = grant.create_authorization_response(redirect_uri, user)  # pyright: ignore
+            return authorization.handle_response(*args)  # pyright: ignore
+        except authlib.oauth2.OAuth2Error as error:
+            return authorization.handle_error_response(request, error)  # pyright: ignore
+
+
+def _validate_auth_request_client_params(
+    flask_request: flask.Request,
+) -> tuple[authlib.oauth2.rfc6749.AuthorizationEndpointMixin, str]:
+    """Validate query parameters sent by the client to the authorization endpoint.
+
+    Raises ``_AuthorizationValidationException`` if validation fails which results
+    in an appropriate 400 response.
+    """
+
+    # TODO: clarify 400 response vs redirection error
+
+    request = FlaskOAuth2Request(flask_request)
+
+    try:
+        grant = authorization.get_consent_grant()  # type: ignore
+        assert isinstance(grant, authlib.oauth2.rfc6749.AuthorizationEndpointMixin)
+        redirect_uri = grant.validate_authorization_request()  # pyright: ignore
+        assert isinstance(redirect_uri, str)
+    except authlib.oauth2.rfc6749.InvalidClientError as e:
+        raise _AuthorizationValidationException(
+            authlib.oauth2.rfc6749.InvalidClientError.error,
+            "Invalid client_id query parameter",
+        ) from e
+    except authlib.oauth2.rfc6749.UnsupportedResponseTypeError as e:
+        raise _AuthorizationValidationException(
+            e.error,
+            f"OAuth response_type {e.response_type} is not supported",
+        ) from e
+    except authlib.oauth2.rfc6749.InvalidRequestError as e:
+        description = e.description  # type: ignore
+        # FIXME: this is a brittle way of determining what the error is but
+        # authlib does not raise a dedicated error in this case.
+        if description == "Redirect URI foo is not supported by client.":
+            raise _AuthorizationValidationException(
+                authlib.oauth2.rfc6749.InvalidClientError.error,
+                description,
+            ) from e
+        else:
+            raise
+    except authlib.oauth2.OAuth2Error as e:
+        raise werkzeug.exceptions.HTTPException(
+            response=flask.make_response(
+                authorization.handle_error_response(request, e)  # type: ignore
+            )
+        ) from e
+
+    return grant, redirect_uri
+
+
+class _AuthorizationValidationException(werkzeug.exceptions.HTTPException):
+    def __init__(self, name: str, description: str):
+        response = flask.make_response(
+            flask.render_template("error.html", name=name, description=description),
+            HTTPStatus.BAD_REQUEST,
+        )
+        super().__init__(response=response)
+        self.code = HTTPStatus.BAD_REQUEST
 
 
 @blueprint.route("/oauth2/token", methods=["POST"])
@@ -363,7 +436,7 @@ class SetUserBody(pydantic.BaseModel):
 
 @blueprint.put("/users/<sub>")
 def set_user(sub: str):
-    body = validate_body(flask.request, SetUserBody)
+    body = _validate_body(flask.request, SetUserBody)
     storage.store_user(User(sub=sub, claims=body.claims, userinfo=body.userinfo))
     return "", HTTPStatus.NO_CONTENT
 
@@ -371,8 +444,7 @@ def set_user(sub: str):
 _Model = TypeVar("_Model", bound=pydantic.BaseModel)
 
 
-def validate_body(request: flask.Request, model: type[_Model]) -> _Model:
-    _logger.error("JO")
+def _validate_body(request: flask.Request, model: type[_Model]) -> _Model:
     try:
         return model.model_validate(request.json, strict=True)
     except pydantic.ValidationError as error:

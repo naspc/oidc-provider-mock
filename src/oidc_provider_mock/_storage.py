@@ -1,8 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
-from typing import cast
+from typing import Literal, TypeAlias, cast
 
 import authlib.oauth2.rfc6749
 import authlib.oidc.core
@@ -16,10 +15,9 @@ class ClientAllowAny:
     """Special value for client fields that skips validation of the field."""
 
 
-class ClientAuthMethod(Enum):
-    NoneAuth = "none"
-    SecretBasic = "client_secret_basic"
-    SecretPost = "client_secret_post"
+ClientAuthMethod: TypeAlias = (
+    Literal["none"] | Literal["client_secret_basic"] | Literal["client_secret_post"]
+)
 
 
 @dataclass(kw_only=True, frozen=True)
