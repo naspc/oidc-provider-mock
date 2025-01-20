@@ -96,8 +96,3 @@ def test_auth_code_login_playwright(
 
     # Verify that we’re logged in
     expect(page.locator("body")).to_contain_text("Welcome Alice (alice@example.com)")
-
-
-if __name__ == "__main__":
-    OpenIDConnect(app)
-    app.run(debug=True)
