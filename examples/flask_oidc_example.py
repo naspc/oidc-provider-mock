@@ -96,3 +96,26 @@ def test_auth_code_login_playwright(
 
     # Verify that we’re logged in
     expect(page.locator("body")).to_contain_text("Welcome Alice (alice@example.com)")
+
+
+def test_auth_denied_playwright(live_server: LiveServer, oidc_server: str, page: Page):
+    """Test user denying authorization"""
+
+    # Let the OIDC provider know about the user’s email and name
+    response = httpx.put(
+        f"{oidc_server}/users/{quote('alice@example.com')}",
+        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+    )
+    assert response.status_code == 204
+
+    # Start login and be redirected to the provider
+    page.goto(live_server.url("/login"))
+
+    # Deny authorization
+    page.get_by_role("button", name="Deny").click()
+
+    # Verify that we’re shown an error message
+    expect(page.get_by_role("heading")).to_have_text("Unauthorized")
+    expect(page.locator("body")).to_contain_text(
+        "access_denied: The resource owner or authorization server denied the request"
+    )
