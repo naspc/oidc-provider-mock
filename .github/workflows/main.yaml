@@ -15,10 +15,10 @@ jobs:
     strategy:
       matrix:
         python:
-        - "3.10"
-        - "3.11"
-        - "3.12"
-        - "3.13"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
 
       fail-fast: true
 
@@ -31,11 +31,17 @@ jobs:
         id: setup-python
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('uv.lock') }}
 
       - run: echo "UV_PYTHON=${{ steps.setup-python.outputs.python-path }}" >> "$GITHUB_ENV"
       - run: uv sync --all-extras --locked
       - run: uv run ruff format --check
       - run: uv run ruff check
       - run: uv run pyright --warnings
+      - run: uv run playwright install chromium
       - run: uv run pytest
       - run: uv run sphinx-build --fail-on-warning docs docs/dist
