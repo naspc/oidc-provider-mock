@@ -128,7 +128,7 @@ class OidcClient:
         if isinstance(response, oic.oic.message.AuthorizationErrorResponse):
             raise AuthorizationError(
                 response["error"],
-                response.get("description"),  # pyright: ignore[reportUnknownArgumentType]
+                response.get("error_description"),  # pyright: ignore[reportUnknownArgumentType]
             )
 
         assert parse_qs(location.query)["state"] == [state]

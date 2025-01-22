@@ -19,7 +19,10 @@ class _WSGIRequestHandler(wsgiref.simple_server.WSGIRequestHandler):
 
 @contextmanager
 def run_server_in_thread(
-    port: int = 0, require_client_registration: bool = False
+    port: int = 0,
+    *,
+    require_client_registration: bool = False,
+    require_nonce: bool = False,
 ) -> Iterator[WSGIServer]:
     """Run a OIDC provider server on a background thread.
 
@@ -35,7 +38,10 @@ def run_server_in_thread(
     server = wsgiref.simple_server.make_server(
         "localhost",
         port,
-        app(require_client_registration=require_client_registration),
+        app(
+            require_client_registration=require_client_registration,
+            require_nonce=require_nonce,
+        ),
         handler_class=_WSGIRequestHandler,
     )
 

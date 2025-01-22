@@ -83,6 +83,9 @@ def test_auth_code_login_playwright(live_server, page, oidc_server):
     expect(page.locator("body")).to_contain_text("Welcome Alice (alice@example.com)")
 ```
 
+You can find a full example at
+[`examples/flask_oidc_example.py`](examples/flask_oidc_example.py), too
+
 ## Alternatives
 
 There already exist a couple of OpendID provider servers for testing. This is

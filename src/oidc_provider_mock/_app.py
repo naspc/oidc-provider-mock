@@ -81,13 +81,15 @@ class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
 
         return method == self._client.token_endpoint_auth_method
 
-    # TODO
     @override
     def check_grant_type(self, grant_type: str):
-        return True
+        # Only authorization_code grants are supported at the moment. If refresh
+        # tokens are supported they need to be added here.
+        return grant_type == "authorization_code"
 
     @override
     def check_response_type(self, response_type: str):
+        # Only the authorization code flow is supported at the moment
         return response_type == "code"
 
 
@@ -178,18 +180,16 @@ blueprint = flask.Blueprint("oidc-provider-mock-authlib", __name__)
 
 @dataclass(kw_only=True, frozen=True)
 class Config:
-    require_client_registration: bool = False
+    require_client_registration: bool
+    require_nonce: bool
 
 
 @blueprint.record
 def setup(setup_state: flask.blueprints.BlueprintSetupState):
     assert isinstance(setup_state.app, flask.Flask)
 
-    config = setup_state.options.get("config", Config())
-    if not isinstance(config, Config):
-        raise TypeError(
-            f"Expected {Config.__name__} as `config` option for blueprint, got {type(config)}"
-        )
+    config = setup_state.options["config"]
+    assert isinstance(config, Config)
 
     authorization = flask_oauth2.AuthorizationServer()
     storage = Storage()
@@ -238,8 +238,7 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
 
     authorization.register_grant(  # type: ignore
         AuthorizationCodeGrant,
-        # TODO: Make this configurable
-        [OpenIDCode(require_nonce=False)],
+        [OpenIDCode(require_nonce=config.require_nonce)],
     )
     authorization.register_grant(ImplicitGrant)  # type: ignore
     authorization.register_grant(HybridGrant)  # type: ignore
@@ -250,22 +249,52 @@ def setup_once(setup_state: flask.blueprints.BlueprintSetupState):
     require_oauth.register_token_validator(TokenValidator())
 
 
-def app(*, require_client_registration: bool = False) -> flask.Flask:
+def app(
+    *,
+    require_client_registration: bool = False,
+    require_nonce: bool = False,
+) -> flask.Flask:
     """Create a flask app for the OpenID provider.
 
     Call ``app().run()`` (see `flask.Flask.run`) to start the server.
 
+    See ``init_app`` for documentaiton of parameters
+    """
+    app = flask.Flask(__name__)
+
+    init_app(
+        app,
+        require_client_registration=require_client_registration,
+        require_nonce=require_nonce,
+    )
+    return app
+
+
+def init_app(
+    app: flask.Flask,
+    *,
+    require_client_registration: bool = False,
+    require_nonce: bool = False,
+):
+    """Add the OpenID provider and its endpoints to the app
 
     :param require_client_registration: If false (the default) any client ID and
         secret can be used to authenticate with the token endpoint. If true,
         clients have to be registered using the `OAuth 2.0 Dynamic Client
         Registration Protocol <https://datatracker.ietf.org/doc/html/rfc7591>`_.
+    :param require_nonce: If true the authorization request must include the
+        `nonce parameter`_ to prevent replay attacks. If the parameter is not
+        provided the authorization request will fail.
+
+    .. _nonce parameter: https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
     """
-    app = flask.Flask(__name__)
 
     app.register_blueprint(
         blueprint,
-        config=Config(require_client_registration=require_client_registration),
+        config=Config(
+            require_client_registration=require_client_registration,
+            require_nonce=require_nonce,
+        ),
     )
     return app
 
@@ -393,7 +422,11 @@ def _validate_auth_request_client_params(
                 description,
             ) from e
         else:
-            raise
+            raise werkzeug.exceptions.HTTPException(
+                response=flask.make_response(
+                    authorization.handle_error_response(request, e)  # type: ignore
+                )
+            ) from e
     except authlib.oauth2.OAuth2Error as e:
         raise werkzeug.exceptions.HTTPException(
             response=flask.make_response(

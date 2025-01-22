@@ -168,6 +168,26 @@ def test_auth_methods_not_supported_for_client(wsgi_server: str):
     }
 
 
+@with_server(require_nonce=True)
+def test_nonce_required_error(wsgi_server: str):
+    state = faker.password()
+
+    client = OidcClient(wsgi_server)
+    auth_url = client.build_authorization_request(state=state)
+    response = httpx.post(auth_url, data={"sub": faker.email()})
+    with pytest.raises(
+        AuthorizationError,
+        match='Authorization failed: invalid_request: Missing "nonce" in request',
+    ):
+        client.fetch_token(response.headers["location"], state=state)
+
+    nonce = faker.password()
+    auth_url = client.build_authorization_request(state=state, nonce=nonce)
+    response = httpx.post(auth_url, data={"sub": faker.email()})
+    response = client.fetch_token(response.headers["location"], state=state)
+    assert response["id_token"]["nonce"] == nonce
+
+
 def test_no_openid_scope(wsgi_server: str):
     subject = faker.email()
     state = faker.password()

@@ -23,7 +23,7 @@ def wsgi_server() -> Iterator[str]:
 
 
 def with_server(
-    require_client_registration: bool = False,
+    require_client_registration: bool = False, require_nonce: bool = False
 ) -> Callable[
     [Callable[[str], None]],
     Callable[[], None],
@@ -32,7 +32,8 @@ def with_server(
         @functools.wraps(test_fn)
         def wrapped_test_fn():
             with oidc_provider_mock.run_server_in_thread(
-                require_client_registration=require_client_registration
+                require_client_registration=require_client_registration,
+                require_nonce=require_nonce,
             ) as server:
                 test_fn(f"http://localhost:{server.server_port}")
 

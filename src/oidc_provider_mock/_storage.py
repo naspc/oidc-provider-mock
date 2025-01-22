@@ -77,9 +77,10 @@ class AccessToken(authlib.oauth2.rfc6749.TokenMixin):
     # Implement `TokenMixin`
 
     @override
-    def check_client(self, client: Client):
-        # TODO implement
-        return True
+    def check_client(self, client: Client) -> bool:
+        # Required for revocation and refresh token endpoints which are not
+        # implemented yet.
+        raise NotImplementedError()
 
     @override
     def is_expired(self):

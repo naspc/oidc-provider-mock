@@ -46,6 +46,9 @@ intersphinx_mapping = {
     "flask": ("https://flask.palletsprojects.com/en/stable/", None),
 }
 
+autodoc_typehints = "both"
+autodoc_typehints_description_target = "documented"
+
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
@@ -72,7 +75,7 @@ class GithubSourceDomain(Domain):
         node: sphinx.addnodes.pending_xref,
         contnode: docutils.nodes.Element,
     ) -> list[tuple[str, docutils.nodes.Element]]:
-        if not re.match(r"\Aexamples/.*\.py\Z", target):
+        if not re.match(r"\Aexamples/.*", target):
             return []
 
         reference = docutils.nodes.reference(
