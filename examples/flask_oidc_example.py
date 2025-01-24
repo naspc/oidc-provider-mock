@@ -22,6 +22,7 @@ def build_app():
     app = flask.Flask(__name__)
     app.config.update({
         "OIDC_CLIENT_SECRETS": Path(__file__).parent / "flask_oidc_client_secrets.json",
+        "OIDC_SCOPES": "openid profile email",
         "SECRET_KEY": "some secret",
         "SERVER_NAME": "localhost",
     })
@@ -100,13 +101,6 @@ def test_auth_code_login_playwright(
 
 def test_auth_denied_playwright(live_server: LiveServer, oidc_server: str, page: Page):
     """Test user denying authorization"""
-
-    # Let the OIDC provider know about the user’s email and name
-    response = httpx.put(
-        f"{oidc_server}/users/{quote('alice@example.com')}",
-        json={"email": "alice@example.com", "name": "Alice"},
-    )
-    assert response.status_code == 204
 
     # Start login and be redirected to the provider
     page.goto(live_server.url("/login"))

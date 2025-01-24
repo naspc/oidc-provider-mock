@@ -25,7 +25,7 @@ class Client:
     id: str
     secret: str | ClientAllowAny
     redirect_uris: Sequence[str] | ClientAllowAny
-    allowed_scopes: Sequence[str] = ("openid", "profile")
+    allowed_scopes: Sequence[str] = ("openid", "profile", "email", "address", "phone")
     token_endpoint_auth_method: ClientAuthMethod | ClientAllowAny
 
 

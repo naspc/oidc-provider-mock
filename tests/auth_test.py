@@ -3,6 +3,7 @@ endopint.
 """
 
 from http import HTTPStatus
+from typing import Any
 
 import httpx
 import oic
@@ -71,6 +72,54 @@ def test_custom_claims(wsgi_server: str):
     userinfo = client.fetch_userinfo(token=response["access_token"])
     assert userinfo["sub"] == subject
     assert userinfo["custom"] == "CLAIM"
+
+
+def test_include_all_claims(wsgi_server: str):
+    subject = faker.email()
+    state = faker.password()
+    claims: dict[str, Any] = {
+        # profile scope
+        "name": faker.name(),
+        "website": faker.uri(),
+        # email scope
+        "email": faker.email(),
+        # address scope
+        "address": {
+            "formatted": faker.address(),
+        },
+        # phone scope
+        "phone": faker.phone_number(),
+    }
+
+    httpx.put(f"{wsgi_server}/users/{subject}", json=claims).raise_for_status()
+
+    client = OidcClient(wsgi_server)
+
+    response = httpx.post(
+        client.build_authorization_request(
+            state=state,
+            scope="openid profile email address phone",
+        ),
+        data={"sub": subject},
+    )
+
+    response = client.fetch_token(response.headers["location"], state=state)
+    assert isinstance(response, oic.oic.message.AccessTokenResponse)
+    id_token = response["id_token"]
+    assert id_token["sub"] == subject
+    assert id_token["name"] == claims["name"]
+    assert id_token["website"] == claims["website"]
+    assert id_token["email"] == claims["email"]
+    assert id_token["address"]["formatted"] == claims["address"]["formatted"]
+    assert id_token["phone"] == claims["phone"]
+
+    user_info = client.fetch_userinfo(token=response["access_token"])
+    assert user_info["sub"] == subject
+    assert user_info["name"] == claims["name"]
+    assert user_info["website"] == claims["website"]
+    assert user_info["email"] == claims["email"]
+    assert user_info["address"]["formatted"] == claims["address"]["formatted"]
+    assert user_info["phone"] == claims["phone"]
 
 
 def test_auth_denied(wsgi_server: str):

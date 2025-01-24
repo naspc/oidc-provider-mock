@@ -152,16 +152,50 @@ class OpenIDCode(authlib.oidc.core.OpenIDCode):
             "iss": flask.request.host_url.rstrip("/"),
         }
 
-    def generate_user_info(self, user: User, scope: Sequence[str]):
-        return _user_claims(user, scope)
+    def generate_user_info(self, user: User, scope: str):
+        return _user_claims_for_scope(user, scope)
 
 
-def _user_claims(user: User, scope: Sequence[str]) -> dict[str, object]:
-    # TODO implement filtering by scope
+def _user_claims_for_scope(user: User, scope: str) -> dict[str, object]:
+    scopes = scope.split(" ")
+    allowed_standard_claims_for_scope = {
+        claim for scope in scopes for claim in _SCOPES_TO_CLAIMS.get(scope, [])
+    }
+
     return {
-        **user.claims,
+        **{
+            name: value
+            for name, value in user.claims.items()
+            if name not in _STANDARD_CLAIMS or name in allowed_standard_claims_for_scope
+        },
         "sub": user.sub,
     }
+
+
+# https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
+_SCOPES_TO_CLAIMS: dict[str, Sequence[str]] = {
+    "profile": [
+        "name",
+        "family_name",
+        "given_name",
+        "middle_name",
+        "nickname",
+        "preferred_username",
+        "profile",
+        "picture",
+        "website",
+        "gender",
+        "birthdate",
+        "zoneinfo",
+        "locale",
+        "updated_at",
+    ],
+    "email": ["email", "email_verified"],
+    "address": ["address"],
+    "phone": ["phone_number", "phone_number_verified"],
+}
+
+_STANDARD_CLAIMS = {claim for claims in _SCOPES_TO_CLAIMS.values() for claim in claims}
 
 
 require_oauth = flask_oauth2.ResourceProtector()
@@ -214,13 +248,15 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
         assert isinstance(token["expires_in"], int)
         assert isinstance(request.user, User)
         user = cast("User", request.user)
+        scope = token.get("scope", "")
+        assert isinstance(scope, str)
 
         storage.store_access_token(
             AccessToken(
                 token=token["access_token"],
                 user_id=user.sub,
                 # request.scope may actually be None
-                scope=request.scope or "",
+                scope=scope,
                 expires_at=datetime.now(timezone.utc)
                 + timedelta(seconds=token["expires_in"]),
             )
@@ -370,8 +406,8 @@ def authorize() -> flask.typing.ResponseReturnValue:
             storage.store_user(user)
 
         try:
-            args = grant.create_authorization_response(redirect_uri, user)  # pyright: ignore
-            return authorization.handle_response(*args)  # pyright: ignore
+            response = grant.create_authorization_response(redirect_uri, user)  # pyright: ignore
+            return authorization.handle_response(*response)  # pyright: ignore
         except authlib.oauth2.OAuth2Error as error:
             return authorization.handle_error_response(request, error)  # pyright: ignore
 
@@ -447,7 +483,9 @@ def issue_token() -> flask.typing.ResponseReturnValue:
 def userinfo():
     access_token = flask_oauth2.current_token
     assert isinstance(access_token, AccessToken)
-    return flask.jsonify(_user_claims(access_token.get_user(), access_token.scope))
+    return flask.jsonify(
+        _user_claims_for_scope(access_token.get_user(), access_token.scope)
+    )
 
 
 SetUserBody = pydantic.RootModel[dict[str, object]]
