@@ -45,18 +45,15 @@ def test_auth_success(wsgi_server: str):
     assert userinfo["sub"] == subject
 
 
-def test_custom_claims_and_userinfo(wsgi_server: str):
-    """Authenticate with additional claims and userinfo"""
+def test_custom_claims(wsgi_server: str):
+    """Authenticate with additional claims in ID token and user info"""
 
     subject = faker.email()
     state = faker.password()
 
     httpx.put(
         f"{wsgi_server}/users/{subject}",
-        json={
-            "claims": {"custom": "CLAIM"},
-            "userinfo": {"custom": "USERINFO"},
-        },
+        json={"custom": "CLAIM"},
     ).raise_for_status()
 
     client = OidcClient(wsgi_server)
@@ -73,7 +70,7 @@ def test_custom_claims_and_userinfo(wsgi_server: str):
 
     userinfo = client.fetch_userinfo(token=response["access_token"])
     assert userinfo["sub"] == subject
-    assert userinfo["custom"] == "USERINFO"
+    assert userinfo["custom"] == "CLAIM"
 
 
 def test_auth_denied(wsgi_server: str):

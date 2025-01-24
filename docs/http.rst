@@ -30,20 +30,14 @@ Query parameters:
 
 Set user information to be included in the ID token and the userinfo endpoint.
 
-The user is identified by ``sub``. The request body is a JSON document of the
-following shape:
+The user is identified by ``sub``. The request body is a JSON document with the
+claims that will be included in the ID token and user info response, for example
 
 .. code:: json
 
     {
-      "claims": {
-          "email": "alice@example.com"
-      },
-      "userinfo": {
-          "avatar_url": "https://example.com/alice.jpg"
-      }
+      "email": "alice@example.com"
+      "nickname": "alice",
     }
 
-You can any property to the ``claims`` and ``userinfo`` values.
-
-Overrides any existing claims and userinfo for the subject.
+A request overrides any previously set claims for the subject.

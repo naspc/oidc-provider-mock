@@ -32,8 +32,7 @@ class Client:
 @dataclass(kw_only=True, frozen=True)
 class User:
     sub: str
-    claims: dict[str, str] = field(default_factory=dict)
-    userinfo: dict[str, object] = field(default_factory=dict)
+    claims: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -71,8 +70,11 @@ class AccessToken(authlib.oauth2.rfc6749.TokenMixin):
     scope: str
     expires_at: datetime
 
-    def get_user(self):
-        return storage.get_user(self.user_id)
+    def get_user(self) -> User:
+        user = storage.get_user(self.user_id)
+        if user is None:
+            raise RuntimeError(f"Missing user {self.user_id} for access toke")
+        return user
 
     # Implement `TokenMixin`
 

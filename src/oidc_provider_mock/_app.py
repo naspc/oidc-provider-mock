@@ -38,6 +38,12 @@ from ._storage import (
 assert __package__
 _logger = logging.getLogger(__package__)
 
+# We don’t support the implict flow. It is generally considered insecure
+# https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#name-implicit-grant
+_RESPONSE_TYPES_SUPPORTED = ["code"]
+
+_GRANT_TYPES_SUPPORTED = ["authorization_code"]
+
 
 class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
     """Wrap ``Client`` to implement authlib’s client protocol."""
@@ -83,14 +89,11 @@ class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
 
     @override
     def check_grant_type(self, grant_type: str):
-        # Only authorization_code grants are supported at the moment. If refresh
-        # tokens are supported they need to be added here.
-        return grant_type == "authorization_code"
+        return grant_type in _GRANT_TYPES_SUPPORTED
 
     @override
     def check_response_type(self, response_type: str):
-        # Only the authorization code flow is supported at the moment
-        return response_type == "code"
+        return response_type in _RESPONSE_TYPES_SUPPORTED
 
 
 class TokenValidator(authlib.oauth2.rfc6750.BearerTokenValidator):
@@ -137,7 +140,7 @@ class AuthorizationCodeGrant(authlib.oauth2.rfc6749.AuthorizationCodeGrant):
         )
 
 
-class OpenIdGrantExtension:
+class OpenIDCode(authlib.oidc.core.OpenIDCode):
     def exists_nonce(self, nonce: str, request: OAuth2Request) -> bool:
         return storage.exists_nonce(nonce)
 
@@ -150,22 +153,15 @@ class OpenIdGrantExtension:
         }
 
     def generate_user_info(self, user: User, scope: Sequence[str]):
-        return {
-            **user.claims,
-            "sub": user.sub,
-        }
+        return _user_claims(user, scope)
 
 
-class OpenIDCode(OpenIdGrantExtension, authlib.oidc.core.OpenIDCode):
-    pass
-
-
-class ImplicitGrant(OpenIdGrantExtension, authlib.oidc.core.OpenIDImplicitGrant):
-    pass
-
-
-class HybridGrant(OpenIdGrantExtension, authlib.oidc.core.OpenIDHybridGrant):
-    pass
+def _user_claims(user: User, scope: Sequence[str]) -> dict[str, object]:
+    # TODO implement filtering by scope
+    return {
+        **user.claims,
+        "sub": user.sub,
+    }
 
 
 require_oauth = flask_oauth2.ResourceProtector()
@@ -240,8 +236,6 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
         AuthorizationCodeGrant,
         [OpenIDCode(require_nonce=config.require_nonce)],
     )
-    authorization.register_grant(ImplicitGrant)  # type: ignore
-    authorization.register_grant(HybridGrant)  # type: ignore
 
 
 @blueprint.record_once
@@ -316,9 +310,8 @@ def openid_config():
         "userinfo_endpoint": url_for(userinfo),
         "registration_endpoint": url_for(register_client),
         "jwks_uri": url_for(jwks),
+        "response_types_supported": _RESPONSE_TYPES_SUPPORTED,
         # TODO properly populate these
-        "response_types_supported": ["code", "id_token", "id_token token"],
-        "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
     })
 
@@ -352,9 +345,8 @@ def register_client():
         "client_secret": client.secret,
         "redirect_uris": client.redirect_uris,
         "token_endpoint_auth_method": body.token_endpoint_auth_method,
-        # For now, limit the accepted flow configuration
-        "grant_types": ["authorization_code"],
-        "response_types": ["code"],
+        "grant_types": _GRANT_TYPES_SUPPORTED,
+        "response_types": _RESPONSE_TYPES_SUPPORTED,
     }), HTTPStatus.CREATED
 
 
@@ -392,8 +384,6 @@ def _validate_auth_request_client_params(
     Raises ``_AuthorizationValidationException`` if validation fails which results
     in an appropriate 400 response.
     """
-
-    # TODO: clarify 400 response vs redirection error
 
     request = FlaskOAuth2Request(flask_request)
 
@@ -455,22 +445,18 @@ def issue_token() -> flask.typing.ResponseReturnValue:
 @blueprint.route("/userinfo", methods=["GET", "POST"])
 @require_oauth()
 def userinfo():
-    # TODO implement filtering by scope
-    return flask.jsonify({
-        **flask_oauth2.current_token.get_user().userinfo,
-        "sub": flask_oauth2.current_token.user_id,
-    })
+    access_token = flask_oauth2.current_token
+    assert isinstance(access_token, AccessToken)
+    return flask.jsonify(_user_claims(access_token.get_user(), access_token.scope))
 
 
-class SetUserBody(pydantic.BaseModel):
-    claims: dict[str, str] = pydantic.Field(default_factory=dict)
-    userinfo: dict[str, object] = pydantic.Field(default_factory=dict)
+SetUserBody = pydantic.RootModel[dict[str, object]]
 
 
 @blueprint.put("/users/<sub>")
 def set_user(sub: str):
     body = _validate_body(flask.request, SetUserBody)
-    storage.store_user(User(sub=sub, claims=body.claims, userinfo=body.userinfo))
+    storage.store_user(User(sub=sub, claims=body.root))
     return "", HTTPStatus.NO_CONTENT
 
 

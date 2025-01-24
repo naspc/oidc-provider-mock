@@ -40,7 +40,7 @@ def test_login(client, oidc_server):
     # Let the OIDC provider know about the user’s email and name
     httpx.put(
         f"{oidc_server}/users/{quote('alice@example.com')}",
-        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+        json={"email": "alice@example.com", "name": "Alice"},
     )
 
     # Start login on the client and get the authorization URL
@@ -69,7 +69,7 @@ def test_auth_code_login_playwright(live_server, page, oidc_server):
     # Let the OIDC provider know about the user’s email and name
     httpx.put(
         f"{oidc_server}/users/{quote('alice@example.com')}",
-        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+        json={"email": "alice@example.com", "name": "Alice"},
     )
 
     # Start login and be redirected to the provider

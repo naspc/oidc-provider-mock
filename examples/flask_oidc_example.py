@@ -58,7 +58,7 @@ def test_auth_code_login(client: flask.testing.FlaskClient, oidc_server: str):
     # Let the OIDC provider know about the user’s email and name
     response = httpx.put(
         f"{oidc_server}/users/{quote('alice@example.com')}",
-        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+        json={"email": "alice@example.com", "name": "Alice"},
     )
     assert response.status_code == 204
 
@@ -83,7 +83,7 @@ def test_auth_code_login_playwright(
     # Let the OIDC provider know about the user’s email and name
     response = httpx.put(
         f"{oidc_server}/users/{quote('alice@example.com')}",
-        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+        json={"email": "alice@example.com", "name": "Alice"},
     )
     assert response.status_code == 204
 
@@ -104,7 +104,7 @@ def test_auth_denied_playwright(live_server: LiveServer, oidc_server: str, page:
     # Let the OIDC provider know about the user’s email and name
     response = httpx.put(
         f"{oidc_server}/users/{quote('alice@example.com')}",
-        json={"userinfo": {"email": "alice@example.com", "name": "Alice"}},
+        json={"email": "alice@example.com", "name": "Alice"},
     )
     assert response.status_code == 204
 
