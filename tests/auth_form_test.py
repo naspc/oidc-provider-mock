@@ -18,18 +18,6 @@ def app():
     return app
 
 
-@pytest.mark.xfail
-def test_authorization_form_show(client: flask.testing.FlaskClient):
-    # TODO: test html form
-    query = urlencode({
-        "client_id": "CLIENT_ID",
-        "redirect_uri": "REDIRECT_URI",
-        "response_type": "code",
-    })
-    response = client.get(f"/oauth2/authorize?{query}")
-    assert response.status_code == 200
-
-
 @pytest.mark.parametrize("method", ["GET", "POST"])
 def test_invalid_client(client: flask.testing.FlaskClient, method: str):
     """

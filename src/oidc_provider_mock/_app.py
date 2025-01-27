@@ -44,6 +44,10 @@ _RESPONSE_TYPES_SUPPORTED = ["code"]
 
 _GRANT_TYPES_SUPPORTED = ["authorization_code"]
 
+_JWS_ALG = "RS256"
+
+_SCOPES_SUPPORTED = ["openid", "profile", "email", "address", "phone"]
+
 
 class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
     """Wrap ``Client`` to implement authlib’s client protocol."""
@@ -147,7 +151,7 @@ class OpenIDCode(authlib.oidc.core.OpenIDCode):
     def get_jwt_config(self, *args: object, **kwargs: object):
         return {
             "key": storage.jwk,
-            "alg": "RS256",
+            "alg": _JWS_ALG,
             "exp": 3600,
             "iss": flask.request.host_url.rstrip("/"),
         }
@@ -236,6 +240,7 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
                 id=id,
                 secret=ClientAllowAny(),
                 redirect_uris=ClientAllowAny(),
+                allowed_scopes=_SCOPES_SUPPORTED,
                 token_endpoint_auth_method=ClientAllowAny(),
             )
 
@@ -339,6 +344,8 @@ def openid_config():
     def url_for(fn: Callable[..., object]) -> str:
         return flask.url_for(f".{fn.__name__}", _external=True)
 
+    # See https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+    # for information about the fields.
     return flask.jsonify({
         "issuer": flask.request.host_url.rstrip("/"),
         "authorization_endpoint": url_for(authorize),
@@ -347,8 +354,10 @@ def openid_config():
         "registration_endpoint": url_for(register_client),
         "jwks_uri": url_for(jwks),
         "response_types_supported": _RESPONSE_TYPES_SUPPORTED,
-        # TODO properly populate these
-        "id_token_signing_alg_values_supported": ["RS256"],
+        "response_modes_supported": ["query"],
+        "grant_types_supported": _GRANT_TYPES_SUPPORTED,
+        "scopes_supported": _SCOPES_SUPPORTED,
+        "id_token_signing_alg_values_supported": [_JWS_ALG],
     })
 
 
@@ -372,6 +381,7 @@ def register_client():
         id=str(uuid4()),
         secret=secrets.token_urlsafe(16),
         redirect_uris=[str(uri) for uri in body.redirect_uris],
+        allowed_scopes=_SCOPES_SUPPORTED,
         token_endpoint_auth_method=body.token_endpoint_auth_method,
     )
 
