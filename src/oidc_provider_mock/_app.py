@@ -85,6 +85,10 @@ class AuthorizationCodeGrant(authlib.oauth2.rfc6749.AuthorizationCodeGrant):
 
 
 class OpenIDCode(authlib.oidc.core.OpenIDCode):
+    def __init__(self, require_nonce: bool, token_max_age: timedelta):
+        super().__init__(require_nonce)
+        self._token_max_mage = token_max_age
+
     @override
     def exists_nonce(self, nonce: str, request: OAuth2Request) -> bool:
         return storage.exists_nonce(nonce)
@@ -94,7 +98,7 @@ class OpenIDCode(authlib.oidc.core.OpenIDCode):
         return {
             "key": storage.jwk,
             "alg": _JWS_ALG,
-            "exp": int(config["access_token_max_age"].total_seconds()),
+            "exp": int(self._token_max_mage.total_seconds()),
             "iss": flask.request.host_url.rstrip("/"),
         }
 
@@ -178,12 +182,6 @@ class Config(TypedDict):
     access_token_max_age: timedelta
 
 
-config = cast(
-    "Config",
-    werkzeug.local.LocalProxy(lambda: flask.g.oidc_provider_mock_config),
-)
-
-
 @blueprint.record
 def setup(setup_state: flask.blueprints.BlueprintSetupState):
     assert isinstance(setup_state.app, flask.Flask)
@@ -264,7 +262,12 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
 
     authorization.register_grant(  # type: ignore
         AuthorizationCodeGrant,
-        [OpenIDCode(require_nonce=config["require_nonce"])],
+        [
+            OpenIDCode(
+                require_nonce=config["require_nonce"],
+                token_max_age=config["access_token_max_age"],
+            )
+        ],
     )
 
     authorization.register_grant(  # type: ignore
