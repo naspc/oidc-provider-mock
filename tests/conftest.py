@@ -35,6 +35,7 @@ _C = TypeVar("_C", bound=Callable[..., None])
 
 
 def use_provider_config(
+    *,
     require_client_registration: bool = False,
     require_nonce: bool = False,
 ) -> Callable[[_C], _C]:
