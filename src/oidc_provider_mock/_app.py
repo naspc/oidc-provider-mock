@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
-from typing import TypeVar, cast
+from typing import TypeVar, TypedDict, cast
 from uuid import uuid4
 
 import authlib.oauth2.rfc6749
@@ -22,7 +22,7 @@ from authlib.integrations import flask_oauth2
 from authlib.integrations.flask_oauth2.authorization_server import FlaskOAuth2Request
 from authlib.oauth2 import OAuth2Request
 from authlib.oauth2.rfc6749 import AccessDeniedError
-from typing_extensions import override
+from typing_extensions import Unpack, override
 
 from ._storage import (
     AccessToken,
@@ -212,8 +212,7 @@ authorization = cast(
 blueprint = flask.Blueprint("oidc-provider-mock-authlib", __name__)
 
 
-@dataclass(kw_only=True, frozen=True)
-class Config:
+class Config(TypedDict):
     require_client_registration: bool
     require_nonce: bool
 
@@ -222,8 +221,7 @@ class Config:
 def setup(setup_state: flask.blueprints.BlueprintSetupState):
     assert isinstance(setup_state.app, flask.Flask)
 
-    config = setup_state.options["config"]
-    assert isinstance(config, Config)
+    config = Config(setup_state.options["config"])
 
     authorization = flask_oauth2.AuthorizationServer()
     storage = Storage()
@@ -235,7 +233,7 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
 
     def query_client(id: str) -> AuthlibClient | None:
         client = storage.get_client(id)
-        if not client and not config.require_client_registration:
+        if not client and not config["require_client_registration"]:
             client = Client(
                 id=id,
                 secret=ClientAllowAny(),
@@ -275,7 +273,7 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
 
     authorization.register_grant(  # type: ignore
         AuthorizationCodeGrant,
-        [OpenIDCode(require_nonce=config.require_nonce)],
+        [OpenIDCode(require_nonce=config["require_nonce"])],
     )
 
 

@@ -12,13 +12,13 @@ import oic.oic.message
 import pytest
 from faker import Faker
 
-from .conftest import with_server
+from .conftest import use_provider_config
 from .test_oidc_client import AuthorizationError, OidcClient
 
 faker = Faker()
 
 
-@with_server(require_client_registration=True)
+@use_provider_config(require_client_registration=True)
 def test_auth_success(wsgi_server: str):
     """Authorization Code flow success with client registration"""
 
@@ -136,7 +136,7 @@ def test_auth_denied(wsgi_server: str):
         client.fetch_token(response.headers["location"], state=state)
 
 
-@with_server(require_client_registration=True)
+@use_provider_config(require_client_registration=True)
 def test_client_not_registered(wsgi_server: str):
     state = faker.password()
 
@@ -214,7 +214,7 @@ def test_auth_methods_not_supported_for_client(wsgi_server: str):
     }
 
 
-@with_server(require_nonce=True)
+@use_provider_config(require_nonce=True)
 def test_nonce_required_error(wsgi_server: str):
     state = faker.password()
 
