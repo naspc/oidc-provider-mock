@@ -12,7 +12,7 @@ from playwright.sync_api import Page, expect
 
 from examples import flask_oidc_example
 
-from .conftest import LiveServer, live_server, use_provider_config
+from .conftest import TestServer, run_server, use_provider_config
 
 
 @pytest.fixture
@@ -23,11 +23,11 @@ def app(oidc_server: str):
 
 @pytest.fixture
 def relying_party(oidc_server: str):
-    with live_server(flask_oidc_example.build_app(oidc_server)) as server:
+    with run_server(flask_oidc_example.build_app(oidc_server)) as server:
         yield server
 
 
-def test_refresh(relying_party: LiveServer, page: Page, oidc_server: str):
+def test_refresh(relying_party: TestServer, page: Page, oidc_server: str):
     with freeze_time("1 Jan 2020", tick=True) as frozen_datetime:
         response = httpx.put(
             f"{oidc_server}/users/{quote('alice@example.com')}",
@@ -51,7 +51,7 @@ def test_refresh(relying_party: LiveServer, page: Page, oidc_server: str):
 
 
 @use_provider_config(issue_refresh_token=False)
-def test_access_token_expired(relying_party: LiveServer, oidc_server: str, page: Page):
+def test_access_token_expired(relying_party: TestServer, oidc_server: str, page: Page):
     with freeze_time("1 Jan 2020", tick=True) as frozen_datetime:
         response = httpx.put(
             f"{oidc_server}/users/{quote('alice@example.com')}",

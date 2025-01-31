@@ -83,10 +83,12 @@ addopts = """\
   --cov-report term
   --cov-report html
   --tb=short
+  --doctest-modules
   --tracing=retain-on-failure
   --pdbcls=IPython.terminal.debugger:TerminalPdb
   """
 python_files = ["*_test.py", "*/examples/*.py"]
+python_classes = ""
 filterwarnings = [
   "error",
   "ignore:Cannot resolve forward reference 'Response':typeguard.TypeHintWarning",

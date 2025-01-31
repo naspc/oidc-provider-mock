@@ -1,55 +1,66 @@
-import logging
 import threading
-import wsgiref.simple_server
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
+from typing import TYPE_CHECKING
+
+import werkzeug.serving
+
+if TYPE_CHECKING:
+    from _typeshed.wsgi import WSGIApplication
 
 from ._app import app
 
 assert __package__
 
-_server_logger = logging.getLogger(f"{__package__}.server")
 
-
-class _WSGIRequestHandler(wsgiref.simple_server.WSGIRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
-        # Override BaseHTTPRequestHandler.log_message which prints to `stderr`.
-        _server_logger.log(logging.INFO, format % args)
-
-
-@contextmanager
 def run_server_in_thread(
     port: int = 0,
     *,
     require_client_registration: bool = False,
     require_nonce: bool = False,
     issue_refresh_token: bool = True,
-) -> Iterator[wsgiref.simple_server.WSGIServer]:
+) -> AbstractContextManager[werkzeug.serving.BaseWSGIServer]:
     """Run a OIDC provider server on a background thread.
 
-    The server is stopped when the context ends. This function uses
-    :any:`wsgiref.simple_server.WSGIServer` which has some limitations.
+    The server is stopped when the context ends.
 
     See `oidc_provider_mock.app` for documentation of parameters.
 
     >>> with run_server_in_thread(port=35432) as server:
     ...     print(f"Server listening at http://localhost:{server.server_port}")
     Server listening at http://localhost:35432
+
     """
-    server = wsgiref.simple_server.make_server(
-        "localhost",
-        port,
-        app(
+    return _threaded_server(
+        port=port,
+        app=app(
             require_client_registration=require_client_registration,
             require_nonce=require_nonce,
             issue_refresh_token=issue_refresh_token,
         ),
-        handler_class=_WSGIRequestHandler,
     )
+
+
+@contextmanager
+def _threaded_server(
+    app: "WSGIApplication",
+    *,
+    host: str = "localhost",
+    port: int = 0,
+    poll_interval: float = 0.1,
+) -> Iterator[werkzeug.serving.ThreadedWSGIServer]:
+    server = werkzeug.serving.make_server(
+        host,
+        port,
+        app,
+        threaded=True,
+    )
+
+    assert isinstance(server, werkzeug.serving.ThreadedWSGIServer)
 
     def run():
         try:
-            server.serve_forever(0.01)
+            server.serve_forever(poll_interval)
         finally:
             server.server_close()
 
