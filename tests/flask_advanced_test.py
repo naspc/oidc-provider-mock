@@ -16,11 +16,6 @@ from .conftest import LiveServer, live_server, use_provider_config
 
 
 @pytest.fixture
-def oidc_server(wsgi_server: str):
-    return wsgi_server
-
-
-@pytest.fixture
 def app(oidc_server: str):
     app = flask_oidc_example.build_app(oidc_server)
     return app
@@ -56,10 +51,10 @@ def test_refresh(relying_party: LiveServer, page: Page, oidc_server: str):
 
 
 @use_provider_config(issue_refresh_token=False)
-def test_access_token_expired(relying_party: LiveServer, wsgi_server: str, page: Page):
+def test_access_token_expired(relying_party: LiveServer, oidc_server: str, page: Page):
     with freeze_time("1 Jan 2020", tick=True) as frozen_datetime:
         response = httpx.put(
-            f"{wsgi_server}/users/{quote('alice@example.com')}",
+            f"{oidc_server}/users/{quote('alice@example.com')}",
             json={"email": "alice@example.com", "name": "Alice"},
         )
         assert response.status_code == 204

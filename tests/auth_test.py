@@ -19,7 +19,7 @@ faker = Faker()
 
 
 @use_provider_config(require_client_registration=True)
-def test_auth_success(wsgi_server: str):
+def test_auth_success(oidc_server: str):
     """Authorization Code flow success with client registration"""
 
     subject = faker.email()
@@ -27,7 +27,7 @@ def test_auth_success(wsgi_server: str):
     nonce = faker.password()
     redirect_uri = faker.uri(schemes=["https"])
 
-    client = OidcClient.register(wsgi_server, redirect_uri=redirect_uri)
+    client = OidcClient.register(oidc_server, redirect_uri=redirect_uri)
 
     response = httpx.post(
         client.build_authorization_request(state=state, nonce=nonce),
@@ -46,18 +46,18 @@ def test_auth_success(wsgi_server: str):
     assert userinfo["sub"] == subject
 
 
-def test_custom_claims(wsgi_server: str):
+def test_custom_claims(oidc_server: str):
     """Authenticate with additional claims in ID token and user info"""
 
     subject = faker.email()
     state = faker.password()
 
     httpx.put(
-        f"{wsgi_server}/users/{subject}",
+        f"{oidc_server}/users/{subject}",
         json={"custom": "CLAIM"},
     ).raise_for_status()
 
-    client = OidcClient(wsgi_server)
+    client = OidcClient(oidc_server)
 
     response = httpx.post(
         client.build_authorization_request(state=state),
@@ -74,7 +74,7 @@ def test_custom_claims(wsgi_server: str):
     assert userinfo["custom"] == "CLAIM"
 
 
-def test_include_all_claims(wsgi_server: str):
+def test_include_all_claims(oidc_server: str):
     subject = faker.email()
     state = faker.password()
     claims: dict[str, Any] = {
@@ -91,9 +91,9 @@ def test_include_all_claims(wsgi_server: str):
         "phone": faker.phone_number(),
     }
 
-    httpx.put(f"{wsgi_server}/users/{subject}", json=claims).raise_for_status()
+    httpx.put(f"{oidc_server}/users/{subject}", json=claims).raise_for_status()
 
-    client = OidcClient(wsgi_server)
+    client = OidcClient(oidc_server)
 
     response = httpx.post(
         client.build_authorization_request(
@@ -122,10 +122,10 @@ def test_include_all_claims(wsgi_server: str):
     assert user_info["phone"] == claims["phone"]
 
 
-def test_auth_denied(wsgi_server: str):
+def test_auth_denied(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient(wsgi_server)
+    client = OidcClient(oidc_server)
 
     response = httpx.post(
         client.build_authorization_request(state=faker.password()),
@@ -137,10 +137,10 @@ def test_auth_denied(wsgi_server: str):
 
 
 @use_provider_config(require_client_registration=True)
-def test_client_not_registered(wsgi_server: str):
+def test_client_not_registered(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient(wsgi_server)
+    client = OidcClient(oidc_server)
 
     response = httpx.post(
         client.build_authorization_request(state=state),
@@ -154,14 +154,14 @@ def test_client_not_registered(wsgi_server: str):
     assert "Invalid client_id query parameter" in response.text
 
 
-def test_wrong_client_secret(wsgi_server: str):
+def test_wrong_client_secret(oidc_server: str):
     state = faker.password()
     redirect_uri = faker.uri(schemes=["https"])
 
-    client = OidcClient.register(wsgi_server, redirect_uri=redirect_uri)
+    client = OidcClient.register(oidc_server, redirect_uri=redirect_uri)
 
     # Create a second client with the same ID but different secret
-    client = OidcClient(wsgi_server, id=client.id, redirect_uri=redirect_uri)
+    client = OidcClient(oidc_server, id=client.id, redirect_uri=redirect_uri)
 
     response = httpx.post(
         client.build_authorization_request(state=state),
@@ -183,11 +183,11 @@ def test_wrong_client_secret(wsgi_server: str):
         "client_secret_post",
     ],
 )
-def test_client_auth_methods(wsgi_server: str, auth_method: str):
+def test_client_auth_methods(oidc_server: str, auth_method: str):
     subject = faker.email()
     state = faker.password()
 
-    client = OidcClient(wsgi_server, auth_method=auth_method)
+    client = OidcClient(oidc_server, auth_method=auth_method)
     auth_url = client.build_authorization_request(state=state)
     response = httpx.post(auth_url, data={"sub": subject})
 
@@ -198,10 +198,10 @@ def test_client_auth_methods(wsgi_server: str, auth_method: str):
     assert userinfo["sub"] == subject
 
 
-def test_auth_methods_not_supported_for_client(wsgi_server: str):
+def test_auth_methods_not_supported_for_client(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient.register(wsgi_server, auth_method="client_secret_basic")
+    client = OidcClient.register(oidc_server, auth_method="client_secret_basic")
     auth_url = client.build_authorization_request(state=state)
     response = httpx.post(auth_url, data={"sub": faker.email()})
     response = client.fetch_token(
@@ -215,10 +215,10 @@ def test_auth_methods_not_supported_for_client(wsgi_server: str):
 
 
 @use_provider_config(require_nonce=True)
-def test_nonce_required_error(wsgi_server: str):
+def test_nonce_required_error(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient(wsgi_server)
+    client = OidcClient(oidc_server)
     auth_url = client.build_authorization_request(state=state)
     response = httpx.post(auth_url, data={"sub": faker.email()})
     with pytest.raises(
@@ -234,11 +234,11 @@ def test_nonce_required_error(wsgi_server: str):
     assert response["id_token"]["nonce"] == nonce
 
 
-def test_no_openid_scope(wsgi_server: str):
+def test_no_openid_scope(oidc_server: str):
     subject = faker.email()
     state = faker.password()
 
-    client = OidcClient(wsgi_server)
+    client = OidcClient(oidc_server)
 
     response = httpx.post(
         client.build_authorization_request(state=state, scope="foo bar"),

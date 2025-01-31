@@ -25,7 +25,7 @@ def app():
 
 
 @pytest.fixture
-def wsgi_server(request: pytest.FixtureRequest) -> Iterator[str]:
+def oidc_server(request: pytest.FixtureRequest) -> Iterator[str]:
     param = getattr(request, "param", None)
     if param:
         config = Config(param)
@@ -48,7 +48,7 @@ def use_provider_config(
 ) -> Callable[[_C], _C]:
     """Set configuration for the app under test."""
     return pytest.mark.parametrize(
-        "wsgi_server",
+        "oidc_server",
         [
             Config(
                 require_client_registration=require_client_registration,
