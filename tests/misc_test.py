@@ -33,12 +33,12 @@ def test_consistent_kwargs():
     def kw_only_params(obj: Callable[..., object]):
         signature = inspect.signature(obj)
 
-        return {
-            k: (v.annotation, v.default)
+        return tuple(
+            (k, v.annotation, v.default)
             for k, v in signature.parameters.items()
             if v.kind
             if v.kind == inspect.Parameter.KEYWORD_ONLY
-        }
+        )
 
     expected_params = kw_only_params(oidc_provider_mock.app)
 

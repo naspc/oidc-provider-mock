@@ -85,17 +85,20 @@ class AuthorizationCodeGrant(authlib.oauth2.rfc6749.AuthorizationCodeGrant):
 
 
 class OpenIDCode(authlib.oidc.core.OpenIDCode):
+    @override
     def exists_nonce(self, nonce: str, request: OAuth2Request) -> bool:
         return storage.exists_nonce(nonce)
 
-    def get_jwt_config(self, *args: object, **kwargs: object):
+    @override
+    def get_jwt_config(self, grant: AuthorizationCodeGrant):
         return {
             "key": storage.jwk,
             "alg": _JWS_ALG,
-            "exp": 3600,
+            "exp": int(config["access_token_max_age"].total_seconds()),
             "iss": flask.request.host_url.rstrip("/"),
         }
 
+    @override
     def generate_user_info(self, user: User, scope: str):
         return _user_claims_for_scope(user, scope)
 
@@ -172,6 +175,13 @@ class Config(TypedDict):
     require_client_registration: bool
     require_nonce: bool
     issue_refresh_token: bool
+    access_token_max_age: timedelta
+
+
+config = cast(
+    "Config",
+    werkzeug.local.LocalProxy(lambda: flask.g.oidc_provider_mock_config),
+)
 
 
 @blueprint.record
@@ -180,10 +190,8 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
 
     config = Config(setup_state.options["config"])
 
-    # TODO: make this configurable
-    # TODO: Align ID token expiry and this value
     setup_state.app.config["OAUTH2_TOKEN_EXPIRES_IN"] = {
-        "authorization_code": 120,
+        "authorization_code": int(config["access_token_max_age"].total_seconds()),
     }
 
     setup_state.app.config["OAUTH2_REFRESH_TOKEN_GENERATOR"] = config[
@@ -196,6 +204,7 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
     @setup_state.app.before_request
     def set_globals():
         flask.g.oidc_provider_mock_storage = storage
+        flask.g.oidc_provider_mock_config = config
         flask.g._authlib_authorization_server = authorization
 
     def query_client(id: str) -> Client | None:
@@ -273,6 +282,7 @@ def app(
     require_client_registration: bool = False,
     require_nonce: bool = False,
     issue_refresh_token: bool = True,
+    access_token_max_age: timedelta = timedelta(hours=1),
 ) -> flask.Flask:
     """Create a flask app for the OpenID provider.
 
@@ -287,6 +297,7 @@ def app(
         require_client_registration=require_client_registration,
         require_nonce=require_nonce,
         issue_refresh_token=issue_refresh_token,
+        access_token_max_age=access_token_max_age,
     )
     return app
 
@@ -297,6 +308,7 @@ def init_app(
     require_client_registration: bool = False,
     require_nonce: bool = False,
     issue_refresh_token: bool = True,
+    access_token_max_age: timedelta = timedelta(hours=1),
 ):
     """Add the OpenID provider and its endpoints to the app
 
@@ -309,6 +321,7 @@ def init_app(
         provided the authorization request will fail.
     :param issue_refresh_token: If true (the default), the token endpoint response
         will include a refresh token.
+    :param access_token_max_age: Max age of access and ID token after which it expires.
 
     .. _nonce parameter: https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
     """
@@ -319,6 +332,7 @@ def init_app(
             require_client_registration=require_client_registration,
             require_nonce=require_nonce,
             issue_refresh_token=issue_refresh_token,
+            access_token_max_age=access_token_max_age,
         ),
     )
     return app
@@ -361,6 +375,7 @@ def jwks():
 class RegisterClientBody(pydantic.BaseModel):
     redirect_uris: Sequence[pydantic.HttpUrl]
     token_endpoint_auth_method: ClientAuthMethod = "client_secret_basic"
+    # TODO: support scopes
 
 
 @blueprint.post("/register-client")

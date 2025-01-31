@@ -1,6 +1,7 @@
 import threading
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import werkzeug.serving
@@ -19,6 +20,7 @@ def run_server_in_thread(
     require_client_registration: bool = False,
     require_nonce: bool = False,
     issue_refresh_token: bool = True,
+    access_token_max_age: timedelta = timedelta(hours=1),
 ) -> AbstractContextManager[werkzeug.serving.BaseWSGIServer]:
     """Run a OIDC provider server on a background thread.
 
@@ -37,6 +39,7 @@ def run_server_in_thread(
             require_client_registration=require_client_registration,
             require_nonce=require_nonce,
             issue_refresh_token=issue_refresh_token,
+            access_token_max_age=access_token_max_age,
         ),
     )
 

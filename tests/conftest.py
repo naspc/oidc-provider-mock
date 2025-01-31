@@ -3,6 +3,7 @@
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TypeVar
 
 import flask
@@ -11,11 +12,10 @@ import typeguard
 import werkzeug.serving
 from playwright.sync_api import Page
 
-from oidc_provider_mock._app import Config
-
 typeguard.install_import_hook("oidc_provider_mock")
 import oidc_provider_mock  # noqa: E402
 import oidc_provider_mock._server  # noqa: E402
+from oidc_provider_mock._app import Config  # noqa: E402
 
 
 @pytest.fixture
@@ -44,6 +44,7 @@ def use_provider_config(
     require_client_registration: bool = False,
     require_nonce: bool = False,
     issue_refresh_token: bool = True,
+    access_token_max_age: timedelta = timedelta(hours=1),
 ) -> Callable[[_C], _C]:
     """Set configuration for the app under test."""
 
@@ -54,6 +55,7 @@ def use_provider_config(
                 require_client_registration=require_client_registration,
                 require_nonce=require_nonce,
                 issue_refresh_token=issue_refresh_token,
+                access_token_max_age=access_token_max_age,
             ),
         ],
         indirect=True,

@@ -2,6 +2,7 @@
 endopint.
 """
 
+from datetime import timedelta
 from http import HTTPStatus
 from typing import Any
 
@@ -248,3 +249,22 @@ def test_no_openid_scope(oidc_server: str):
     response = client.fetch_token(response.headers["location"], state)
     assert response["token_type"] == "Bearer"
     assert "id_token" not in response
+
+
+@use_provider_config(access_token_max_age=timedelta(minutes=111))
+def test_token_expiry(oidc_server: str):
+    subject = faker.email()
+    state = faker.password()
+
+    client = OidcClient.register(oidc_server)
+
+    response = httpx.post(
+        client.build_authorization_request(state=state),
+        data={"sub": subject},
+    )
+    assert response.status_code == 302
+    response = client.fetch_token(response.headers["location"], state=state)
+
+    assert isinstance(response, oic.oic.message.AccessTokenResponse)
+    assert response["id_token"]["exp"] - response["id_token"]["iat"] == 111 * 60
+    assert response["expires_in"] == 111 * 60
