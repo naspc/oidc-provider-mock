@@ -2,10 +2,9 @@ import logging
 import secrets
 import textwrap
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
-from typing import TypeVar, TypedDict, cast
+from typing import TypedDict, TypeVar, cast
 from uuid import uuid4
 
 import authlib.oauth2.rfc6749
@@ -22,7 +21,7 @@ from authlib.integrations import flask_oauth2
 from authlib.integrations.flask_oauth2.authorization_server import FlaskOAuth2Request
 from authlib.oauth2 import OAuth2Request
 from authlib.oauth2.rfc6749 import AccessDeniedError
-from typing_extensions import Unpack, override
+from typing_extensions import override
 
 from ._storage import (
     AccessToken,
@@ -38,66 +37,7 @@ from ._storage import (
 assert __package__
 _logger = logging.getLogger(__package__)
 
-# We don’t support the implict flow. It is generally considered insecure
-# https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#name-implicit-grant
-_RESPONSE_TYPES_SUPPORTED = ["code"]
-
-_GRANT_TYPES_SUPPORTED = ["authorization_code"]
-
 _JWS_ALG = "RS256"
-
-_SCOPES_SUPPORTED = ["openid", "profile", "email", "address", "phone"]
-
-
-class AuthlibClient(authlib.oauth2.rfc6749.ClientMixin):
-    """Wrap ``Client`` to implement authlib’s client protocol."""
-
-    def __init__(self, client: Client) -> None:
-        self._client = client
-
-    @override
-    def get_client_id(self):
-        return self._client.id
-
-    @override
-    def get_default_redirect_uri(self) -> str:
-        if isinstance(self._client.redirect_uris, ClientAllowAny):
-            return "https://example.com"
-
-        return self._client.redirect_uris[0]
-
-    @override
-    def get_allowed_scope(self, scope: str) -> str:
-        return " ".join(s for s in scope.split() if s in self._client.allowed_scopes)
-
-    @override
-    def check_redirect_uri(self, redirect_uri: str) -> bool:
-        if isinstance(self._client.redirect_uris, ClientAllowAny):
-            return True
-
-        return redirect_uri in self._client.redirect_uris
-
-    @override
-    def check_client_secret(self, client_secret: str) -> bool:
-        if isinstance(self._client.secret, ClientAllowAny):
-            return True
-
-        return client_secret == self._client.secret
-
-    @override
-    def check_endpoint_auth_method(self, method: str, endpoint: object):
-        if isinstance(self._client.token_endpoint_auth_method, ClientAllowAny):
-            return True
-
-        return method == self._client.token_endpoint_auth_method
-
-    @override
-    def check_grant_type(self, grant_type: str):
-        return grant_type in _GRANT_TYPES_SUPPORTED
-
-    @override
-    def check_response_type(self, response_type: str):
-        return response_type in _RESPONSE_TYPES_SUPPORTED
 
 
 class TokenValidator(authlib.oauth2.rfc6750.BearerTokenValidator):
@@ -112,7 +52,7 @@ class TokenValidator(authlib.oauth2.rfc6750.BearerTokenValidator):
 class AuthorizationCodeGrant(authlib.oauth2.rfc6749.AuthorizationCodeGrant):
     @override
     def query_authorization_code(
-        self, code: str, client: AuthlibClient
+        self, code: str, client: Client
     ) -> AuthorizationCode | None:
         auth_code = storage.get_authorization_code(code)
         if auth_code and auth_code.client_id == client.get_client_id():
@@ -130,7 +70,7 @@ class AuthorizationCodeGrant(authlib.oauth2.rfc6749.AuthorizationCodeGrant):
     def save_authorization_code(self, code: str, request: object):
         assert isinstance(request, OAuth2Request)
         assert isinstance(request.user, User)
-        client = cast("AuthlibClient", request.client)
+        client = cast("Client", request.client)
         assert isinstance(request.redirect_uri, str)  # type: ignore
         storage.store_authorization_code(
             AuthorizationCode(
@@ -231,19 +171,18 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
         flask.g.oidc_provider_mock_storage = storage
         flask.g._authlib_authorization_server = authorization
 
-    def query_client(id: str) -> AuthlibClient | None:
+    def query_client(id: str) -> Client | None:
         client = storage.get_client(id)
         if not client and not config["require_client_registration"]:
             client = Client(
                 id=id,
                 secret=ClientAllowAny(),
                 redirect_uris=ClientAllowAny(),
-                allowed_scopes=_SCOPES_SUPPORTED,
+                allowed_scopes=Client.SCOPES_SUPPORTED,
                 token_endpoint_auth_method=ClientAllowAny(),
             )
 
-        if client:
-            return AuthlibClient(client)
+        return client
 
     def save_token(token: dict[str, object], request: OAuth2Request):
         assert token["token_type"] == "Bearer"
@@ -351,10 +290,10 @@ def openid_config():
         "userinfo_endpoint": url_for(userinfo),
         "registration_endpoint": url_for(register_client),
         "jwks_uri": url_for(jwks),
-        "response_types_supported": _RESPONSE_TYPES_SUPPORTED,
+        "response_types_supported": Client.RESPONSE_TYPES_SUPPORTED,
         "response_modes_supported": ["query"],
-        "grant_types_supported": _GRANT_TYPES_SUPPORTED,
-        "scopes_supported": _SCOPES_SUPPORTED,
+        "grant_types_supported": Client.GRANT_TYPES_SUPPORTED,
+        "scopes_supported": Client.SCOPES_SUPPORTED,
         "id_token_signing_alg_values_supported": [_JWS_ALG],
     })
 
@@ -379,7 +318,7 @@ def register_client():
         id=str(uuid4()),
         secret=secrets.token_urlsafe(16),
         redirect_uris=[str(uri) for uri in body.redirect_uris],
-        allowed_scopes=_SCOPES_SUPPORTED,
+        allowed_scopes=Client.SCOPES_SUPPORTED,
         token_endpoint_auth_method=body.token_endpoint_auth_method,
     )
 
@@ -389,8 +328,8 @@ def register_client():
         "client_secret": client.secret,
         "redirect_uris": client.redirect_uris,
         "token_endpoint_auth_method": body.token_endpoint_auth_method,
-        "grant_types": _GRANT_TYPES_SUPPORTED,
-        "response_types": _RESPONSE_TYPES_SUPPORTED,
+        "grant_types": Client.GRANT_TYPES_SUPPORTED,
+        "response_types": Client.RESPONSE_TYPES_SUPPORTED,
     }), HTTPStatus.CREATED
 
 

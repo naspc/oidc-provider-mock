@@ -21,12 +21,62 @@ ClientAuthMethod: TypeAlias = (
 
 
 @dataclass(kw_only=True, frozen=True)
-class Client:
+class Client(authlib.oauth2.rfc6749.ClientMixin):
     id: str
     secret: str | ClientAllowAny
     redirect_uris: Sequence[str] | ClientAllowAny
     allowed_scopes: Sequence[str]
     token_endpoint_auth_method: ClientAuthMethod | ClientAllowAny
+
+    """Wrap ``Client`` to implement authlib’s client protocol."""
+
+    RESPONSE_TYPES_SUPPORTED = ["code"]
+    GRANT_TYPES_SUPPORTED = ["authorization_code", "refresh_token"]
+    SCOPES_SUPPORTED = ["openid", "profile", "email", "address", "phone"]
+
+    @override
+    def get_client_id(self):
+        return self.id
+
+    @override
+    def get_default_redirect_uri(self) -> str:
+        if isinstance(self.redirect_uris, ClientAllowAny):
+            return "https://example.com"
+
+        return self.redirect_uris[0]
+
+    @override
+    def get_allowed_scope(self, scope: str) -> str:
+        return " ".join(s for s in scope.split() if s in self.allowed_scopes)
+
+    @override
+    def check_redirect_uri(self, redirect_uri: str) -> bool:
+        if isinstance(self.redirect_uris, ClientAllowAny):
+            return True
+
+        return redirect_uri in self.redirect_uris
+
+    @override
+    def check_client_secret(self, client_secret: str) -> bool:
+        if isinstance(self.secret, ClientAllowAny):
+            return True
+
+        return client_secret == self.secret
+
+    @override
+    def check_endpoint_auth_method(self, method: str, endpoint: object):
+        if isinstance(self.token_endpoint_auth_method, ClientAllowAny):
+            return True
+
+        return method == self.token_endpoint_auth_method
+
+    @override
+    def check_grant_type(self, grant_type: str):
+        return grant_type in self.GRANT_TYPES_SUPPORTED
+
+    @override
+    def check_response_type(self, response_type: str):
+        return response_type in self.RESPONSE_TYPES_SUPPORTED
 
 
 @dataclass(kw_only=True, frozen=True)
