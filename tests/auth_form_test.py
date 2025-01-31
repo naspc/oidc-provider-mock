@@ -69,7 +69,3 @@ def test_invalid_client(client: flask.testing.FlaskClient, method: str):
     assert response.status_code == 400
     assert "Error: invalid_client" in response.text
     assert "Redirect URI foo is not supported by client." in response.text
-
-
-@pytest.mark.skip
-def test_refresh(): ...

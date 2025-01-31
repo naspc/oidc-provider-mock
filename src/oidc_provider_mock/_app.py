@@ -19,8 +19,7 @@ import werkzeug.local
 from authlib import jose
 from authlib.integrations import flask_oauth2
 from authlib.integrations.flask_oauth2.authorization_server import FlaskOAuth2Request
-from authlib.oauth2 import OAuth2Request
-from authlib.oauth2.rfc6749 import AccessDeniedError
+from authlib.oauth2 import OAuth2Error, OAuth2Request
 from typing_extensions import override
 
 from ._storage import (
@@ -29,6 +28,7 @@ from ._storage import (
     Client,
     ClientAllowAny,
     ClientAuthMethod,
+    RefreshToken,
     Storage,
     User,
     storage,
@@ -44,7 +44,7 @@ class TokenValidator(authlib.oauth2.rfc6750.BearerTokenValidator):
     def authenticate_token(self, token_string: str):
         token = storage.get_access_token(token_string)
         if not token:
-            raise AccessDeniedError
+            raise authlib.oauth2.rfc6749.AccessDeniedError()
 
         return token
 
@@ -98,6 +98,22 @@ class OpenIDCode(authlib.oidc.core.OpenIDCode):
 
     def generate_user_info(self, user: User, scope: str):
         return _user_claims_for_scope(user, scope)
+
+
+class RefreshTokenGrant(authlib.oauth2.rfc6749.RefreshTokenGrant):
+    @override
+    def authenticate_refresh_token(self, refresh_token: str):
+        token = storage.get_refresh_token(refresh_token)
+        if not token:
+            raise authlib.oauth2.rfc6749.AccessDeniedError()
+
+        return token
+
+    def authenticate_user(self, refresh_token: RefreshToken):
+        return storage.get_user(refresh_token.user_id)
+
+    def revoke_old_credential(self, refresh_token: RefreshToken):
+        storage.remove_access_token(refresh_token.access_token)
 
 
 def _user_claims_for_scope(user: User, scope: str) -> dict[str, object]:
@@ -155,6 +171,7 @@ blueprint = flask.Blueprint("oidc-provider-mock-authlib", __name__)
 class Config(TypedDict):
     require_client_registration: bool
     require_nonce: bool
+    issue_refresh_token: bool
 
 
 @blueprint.record
@@ -162,6 +179,16 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
     assert isinstance(setup_state.app, flask.Flask)
 
     config = Config(setup_state.options["config"])
+
+    # TODO: make this configurable
+    # TODO: Align ID token expiry and this value
+    setup_state.app.config["OAUTH2_TOKEN_EXPIRES_IN"] = {
+        "authorization_code": 120,
+    }
+
+    setup_state.app.config["OAUTH2_REFRESH_TOKEN_GENERATOR"] = config[
+        "issue_refresh_token"
+    ]
 
     authorization = flask_oauth2.AuthorizationServer()
     storage = Storage()
@@ -204,6 +231,22 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
             )
         )
 
+        if "refresh_token" in token:
+            assert isinstance(token["refresh_token"], str)
+            assert isinstance(request.client, Client)
+
+            storage.store_refresh_token(
+                RefreshToken(
+                    access_token=token["access_token"],
+                    token=token["refresh_token"],
+                    user_id=user.sub,
+                    scope=scope,
+                    expires_at=datetime.now(timezone.utc)
+                    + timedelta(seconds=token["expires_in"]),
+                    client_id=request.client.id,
+                )
+            )
+
     authorization.init_app(  # type: ignore
         setup_state.app,
         query_client=query_client,
@@ -213,6 +256,10 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
     authorization.register_grant(  # type: ignore
         AuthorizationCodeGrant,
         [OpenIDCode(require_nonce=config["require_nonce"])],
+    )
+
+    authorization.register_grant(  # type: ignore
+        RefreshTokenGrant
     )
 
 
@@ -225,6 +272,7 @@ def app(
     *,
     require_client_registration: bool = False,
     require_nonce: bool = False,
+    issue_refresh_token: bool = True,
 ) -> flask.Flask:
     """Create a flask app for the OpenID provider.
 
@@ -238,6 +286,7 @@ def app(
         app,
         require_client_registration=require_client_registration,
         require_nonce=require_nonce,
+        issue_refresh_token=issue_refresh_token,
     )
     return app
 
@@ -247,6 +296,7 @@ def init_app(
     *,
     require_client_registration: bool = False,
     require_nonce: bool = False,
+    issue_refresh_token: bool = True,
 ):
     """Add the OpenID provider and its endpoints to the app
 
@@ -254,9 +304,11 @@ def init_app(
         secret can be used to authenticate with the token endpoint. If true,
         clients have to be registered using the `OAuth 2.0 Dynamic Client
         Registration Protocol <https://datatracker.ietf.org/doc/html/rfc7591>`_.
-    :param require_nonce: If true the authorization request must include the
+    :param require_nonce: If true, the authorization request must include the
         `nonce parameter`_ to prevent replay attacks. If the parameter is not
         provided the authorization request will fail.
+    :param issue_refresh_token: If true (the default), the token endpoint response
+        will include a refresh token.
 
     .. _nonce parameter: https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
     """
@@ -266,6 +318,7 @@ def init_app(
         config=Config(
             require_client_registration=require_client_registration,
             require_nonce=require_nonce,
+            issue_refresh_token=issue_refresh_token,
         ),
     )
     return app
@@ -343,7 +396,9 @@ def authorize() -> flask.typing.ResponseReturnValue:
     else:
         if flask.request.form.get("action") == "deny":
             return authorization.handle_response(  # pyright: ignore[reportUnknownMemberType]
-                *AccessDeniedError(redirect_uri=flask.request.args["redirect_uri"])()
+                *authlib.oauth2.rfc6749.AccessDeniedError(
+                    redirect_uri=flask.request.args["redirect_uri"]
+                )()
             )
 
         # TODO: validate sub
@@ -422,7 +477,20 @@ class _AuthorizationValidationException(werkzeug.exceptions.HTTPException):
 
 @blueprint.route("/oauth2/token", methods=["POST"])
 def issue_token() -> flask.typing.ResponseReturnValue:
-    return authorization.create_token_response()  # pyright: ignore
+    request = FlaskOAuth2Request(flask.request)
+    try:
+        grant = authorization.get_token_grant(request)  # type: ignore
+    except authlib.oauth2.rfc6749.UnsupportedGrantTypeError as error:
+        _logger.warning("unsupported grant type when issuing token", exc_info=error)
+        return authorization.handle_error_response(request, error)  # type: ignore
+
+    try:
+        grant.validate_token_request()  # type: ignore
+        args = grant.create_token_response()  # type: ignore
+        return authorization.handle_response(*args)  # type: ignore
+    except OAuth2Error as error:
+        _logger.warning("failed to issue token", exc_info=error)
+        return authorization.handle_error_response(request, error)  # type: ignore
 
 
 @blueprint.route("/userinfo", methods=["GET", "POST"])

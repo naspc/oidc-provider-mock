@@ -18,13 +18,14 @@ from pytest_flask.live_server import LiveServer
 import oidc_provider_mock
 
 
-def build_app():
+def build_app(oidc_provider_url: str):
     app = flask.Flask(__name__)
     app.config.update({
         "OIDC_CLIENT_SECRETS": Path(__file__).parent / "flask_oidc_client_secrets.json",
+        "OIDC_INTROSPECTION_AUTH_METHOD": "client_secret_basic",
         "OIDC_SCOPES": "openid profile email",
         "SECRET_KEY": "some secret",
-        "SERVER_NAME": "localhost",
+        "SERVER_NAME": "localhost",  # See https://github.com/pytest-dev/pytest-flask/issues/175
     })
 
     @app.route("/")
@@ -35,16 +36,18 @@ def build_app():
         else:
             return "Not logged in"
 
+    app.config["OIDC_SERVER_METADATA_URL"] = (
+        f"{oidc_provider_url}/.well-known/openid-configuration"
+    )
+    OpenIDConnect(app)
+
     return app
 
 
-@pytest.fixture(name="app")
+@pytest.fixture
 def app(oidc_server: str):
-    app = build_app()
-    app.config["OIDC_SERVER_METADATA_URL"] = (
-        f"{oidc_server}/.well-known/openid-configuration"
-    )
-    OpenIDConnect(app)
+    logging.getLogger("oidc_provider_mock").setLevel(logging.DEBUG)
+    app = build_app(oidc_server)
     return app
 
 

@@ -3,7 +3,6 @@ import threading
 import wsgiref.simple_server
 from collections.abc import Iterator
 from contextlib import contextmanager
-from wsgiref.simple_server import WSGIServer
 
 from ._app import app
 
@@ -14,6 +13,7 @@ _server_logger = logging.getLogger(f"{__package__}.server")
 
 class _WSGIRequestHandler(wsgiref.simple_server.WSGIRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
+        # Override BaseHTTPRequestHandler.log_message which prints to `stderr`.
         _server_logger.log(logging.INFO, format % args)
 
 
@@ -23,7 +23,8 @@ def run_server_in_thread(
     *,
     require_client_registration: bool = False,
     require_nonce: bool = False,
-) -> Iterator[WSGIServer]:
+    issue_refresh_token: bool = True,
+) -> Iterator[wsgiref.simple_server.WSGIServer]:
     """Run a OIDC provider server on a background thread.
 
     The server is stopped when the context ends. This function uses
@@ -41,6 +42,7 @@ def run_server_in_thread(
         app(
             require_client_registration=require_client_registration,
             require_nonce=require_nonce,
+            issue_refresh_token=issue_refresh_token,
         ),
         handler_class=_WSGIRequestHandler,
     )
@@ -51,12 +53,19 @@ def run_server_in_thread(
         finally:
             server.server_close()
 
-    thread = threading.Thread(target=run)
-    thread.start()
+    server_thread = threading.Thread(target=run)
+    server_thread.start()
 
     try:
         yield server
 
     finally:
-        server.shutdown()
-        thread.join()
+        shutdown_thread = threading.Thread(target=server.shutdown)
+        shutdown_thread.start()
+        shutdown_thread.join(1)
+        if shutdown_thread.is_alive():
+            raise TimeoutError("Server failed to shut down in time")
+
+        server_thread.join(0.5)
+        if server_thread.is_alive():
+            raise TimeoutError("Server thread timed out")

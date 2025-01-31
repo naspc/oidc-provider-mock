@@ -130,8 +130,7 @@ class AccessToken(authlib.oauth2.rfc6749.TokenMixin):
 
     @override
     def check_client(self, client: Client) -> bool:
-        # Required for revocation and refresh token endpoints which are not
-        # implemented yet.
+        # Required only for revocation and refresh token endpoints.
         raise NotImplementedError()
 
     @override
@@ -147,6 +146,16 @@ class AccessToken(authlib.oauth2.rfc6749.TokenMixin):
         return self.scope
 
 
+@dataclass(kw_only=True, frozen=True)
+class RefreshToken(AccessToken):
+    client_id: str
+    access_token: str
+
+    @override
+    def check_client(self, client: Client) -> bool:
+        return self.client_id == client.id
+
+
 class Storage:
     jwk: jose.RSAKey
 
@@ -154,15 +163,17 @@ class Storage:
     _users: dict[str, User]
     _authorization_codes: dict[str, AuthorizationCode]
     _access_tokens: dict[str, AccessToken]
+    _refresh_tokens: dict[str, RefreshToken]
     _nonces: set[str]
 
     def __init__(self) -> None:
         self.jwk = jose.RSAKey.generate_key(is_private=True)  # pyright: ignore[reportUnknownMemberType]
+        self._clients = {}
         self._users = {}
         self._authorization_codes = {}
         self._access_tokens = {}
+        self._refresh_tokens = {}
         self._nonces = set()
-        self._clients = {}
 
     def get_user(self, sub: str) -> User | None:
         return self._users.get(sub)
@@ -184,6 +195,15 @@ class Storage:
 
     def store_access_token(self, access_token: AccessToken):
         self._access_tokens[access_token.token] = access_token
+
+    def remove_access_token(self, access_token: str):
+        del self._access_tokens[access_token]
+
+    def get_refresh_token(self, token: str) -> RefreshToken | None:
+        return self._refresh_tokens.get(token)
+
+    def store_refresh_token(self, refresh_token: RefreshToken):
+        self._refresh_tokens[refresh_token.token] = refresh_token
 
     def get_client(self, id: str) -> Client | None:
         return self._clients.get(id)
