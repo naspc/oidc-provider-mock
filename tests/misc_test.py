@@ -5,6 +5,7 @@ from http import HTTPStatus
 import flask.testing
 
 import oidc_provider_mock
+import oidc_provider_mock._app
 
 from .conftest import use_provider_config
 
@@ -40,7 +41,7 @@ def test_consistent_kwargs():
             if v.kind == inspect.Parameter.KEYWORD_ONLY
         )
 
-    expected_params = kw_only_params(oidc_provider_mock.app)
+    expected_params = kw_only_params(oidc_provider_mock._app.Config)
 
     assert kw_only_params(oidc_provider_mock.init_app) == expected_params
     assert kw_only_params(oidc_provider_mock.run_server_in_thread) == expected_params

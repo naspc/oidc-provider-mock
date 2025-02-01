@@ -1,5 +1,6 @@
 # pyright: reportPrivateUsage=none
 
+import dataclasses
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -27,8 +28,7 @@ def app():
 def oidc_server(request: pytest.FixtureRequest) -> Iterator[str]:
     param = getattr(request, "param", None)
     if param:
-        config = Config(param)
-        app = oidc_provider_mock.app(**config)
+        app = oidc_provider_mock.app(**dataclasses.asdict(param))
     else:
         app = oidc_provider_mock.app()
 

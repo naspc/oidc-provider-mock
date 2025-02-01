@@ -2,9 +2,10 @@ import logging
 import secrets
 import textwrap
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
-from typing import TypedDict, TypeVar, cast
+from typing import TypeVar, cast
 from uuid import uuid4
 
 import authlib.oauth2.rfc6749
@@ -175,26 +176,28 @@ authorization = cast(
 blueprint = flask.Blueprint("oidc-provider-mock-authlib", __name__)
 
 
-class Config(TypedDict):
-    require_client_registration: bool
-    require_nonce: bool
-    issue_refresh_token: bool
-    access_token_max_age: timedelta
+@dataclass(kw_only=True, frozen=True)
+class Config:
+    require_client_registration: bool = False
+    require_nonce: bool = False
+    issue_refresh_token: bool = True
+    access_token_max_age: timedelta = timedelta(hours=1)
 
 
 @blueprint.record
 def setup(setup_state: flask.blueprints.BlueprintSetupState):
     assert isinstance(setup_state.app, flask.Flask)
 
-    config = Config(setup_state.options["config"])
+    config = setup_state.options["config"]
+    assert isinstance(config, Config)
 
     setup_state.app.config["OAUTH2_TOKEN_EXPIRES_IN"] = {
-        "authorization_code": int(config["access_token_max_age"].total_seconds()),
+        "authorization_code": int(config.access_token_max_age.total_seconds()),
     }
 
-    setup_state.app.config["OAUTH2_REFRESH_TOKEN_GENERATOR"] = config[
-        "issue_refresh_token"
-    ]
+    setup_state.app.config["OAUTH2_REFRESH_TOKEN_GENERATOR"] = (
+        config.issue_refresh_token
+    )
 
     authorization = flask_oauth2.AuthorizationServer()
     storage = Storage()
@@ -207,7 +210,7 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
 
     def query_client(id: str) -> Client | None:
         client = storage.get_client(id)
-        if not client and not config["require_client_registration"]:
+        if not client and not config.require_client_registration:
             client = Client(
                 id=id,
                 secret=ClientAllowAny(),
@@ -264,8 +267,8 @@ def setup(setup_state: flask.blueprints.BlueprintSetupState):
         AuthorizationCodeGrant,
         [
             OpenIDCode(
-                require_nonce=config["require_nonce"],
-                token_max_age=config["access_token_max_age"],
+                require_nonce=config.require_nonce,
+                token_max_age=config.access_token_max_age,
             )
         ],
     )
