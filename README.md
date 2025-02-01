@@ -59,7 +59,9 @@ def test_login(client, oidc_server):
 ```
 
 For all full testing example, see
-[`examples/flask_oidc_example.py`](examples/flask_oidc_example.py)
+[`examples/flask_oidc_example.py`](examples/flask_oidc_example.py). You can find
+more advanced tests in
+[`tests/flask_advanced_test.py`](tests/flask_advanced_test.py).
 
 If you’re using [Playwright](https://playwright.dev) for end-to-end tests, a
 login test looks like this:
@@ -84,7 +86,7 @@ def test_auth_code_login_playwright(live_server, page, oidc_server):
 ```
 
 You can find a full example at
-[`examples/flask_oidc_example.py`](examples/flask_oidc_example.py), too
+[`examples/flask_oidc_example.py`](examples/flask_oidc_example.py), too.
 
 ## Alternatives
 
