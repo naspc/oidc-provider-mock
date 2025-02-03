@@ -21,25 +21,17 @@ from oidc_provider_mock._app import Config  # noqa: E402
 
 
 @pytest.fixture
-def app():
-    return oidc_provider_mock.app()
-
-
-@pytest.fixture(autouse=True)
-def setup_logging():
-    logging.getLogger("oidc_provider_mock").setLevel(logging.DEBUG)
-
-
-@pytest.fixture
-def oidc_server(request: pytest.FixtureRequest) -> Iterator[str]:
+def app(request: pytest.FixtureRequest):
     param = getattr(request, "param", None)
     if param:
         app = oidc_provider_mock.app(**dataclasses.asdict(param))
     else:
         app = oidc_provider_mock.app()
 
-    with run_server(app) as server:
-        yield server.url()
+    # When using the `client` fixture, we include the port so that authlib does
+    # not complain about insecure URLs.
+    app.config["SERVER_NAME"] = "localhost:54321"
+    return app
 
 
 _C = TypeVar("_C", bound=Callable[..., None])
@@ -55,7 +47,7 @@ def use_provider_config(
     """Set configuration for the app under test."""
 
     return pytest.mark.parametrize(
-        "oidc_server",
+        "app",
         [
             Config(
                 require_client_registration=require_client_registration,
@@ -67,6 +59,17 @@ def use_provider_config(
         indirect=True,
         ids=[""],
     )
+
+
+@pytest.fixture(autouse=True)
+def setup_logging():
+    logging.getLogger("oidc_provider_mock").setLevel(logging.DEBUG)
+
+
+@pytest.fixture
+def oidc_server(app: flask.Flask) -> Iterator[str]:
+    with run_server(app) as server:
+        yield server.url()
 
 
 @pytest.fixture

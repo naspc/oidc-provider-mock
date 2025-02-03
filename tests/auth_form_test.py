@@ -5,20 +5,13 @@ import flask.testing
 import pytest
 from faker import Faker
 
-import oidc_provider_mock
+from .conftest import use_provider_config
 
 faker = Faker()
 
 
-@pytest.fixture
-def app():
-    app = oidc_provider_mock.app(require_client_registration=True)
-    # Use localhost with port so that https is not required
-    app.config["SERVER_NAME"] = "localhost:54321"
-    return app
-
-
 @pytest.mark.parametrize("method", ["GET", "POST"])
+@use_provider_config(require_client_registration=True)
 def test_invalid_client(client: flask.testing.FlaskClient, method: str):
     """
     Respond with 400 and error description when:
