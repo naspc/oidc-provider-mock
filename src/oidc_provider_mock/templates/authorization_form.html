@@ -6,7 +6,19 @@
 <main class="container">
   <h1>Authorize Client</h1>
   <form method="post">
+    {% if sub_missing %}
+    <input
+      type="text"
+      name="sub"
+      placeholder="sub"
+      required
+      aria-invalid="true"
+      aria-describedby="sub-missing"
+    />
+    <small id="sub-missing">The field is missing</small>
+    {% else %}
     <input type="text" name="sub" placeholder="sub" required />
+    {% endif %}
     <button type="submit">Authorize</button>
   </form>
   <form method="post">

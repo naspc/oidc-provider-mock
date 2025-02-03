@@ -62,3 +62,13 @@ def test_invalid_client(client: flask.testing.FlaskClient, method: str):
     assert response.status_code == 400
     assert "Error: invalid_client" in response.text
     assert "Redirect URI foo is not supported by client." in response.text
+
+
+def test_missing_sub_parameter(client: flask.testing.FlaskClient):
+    query = urlencode({
+        "client_id": str(faker.uuid4()),
+        "redirect_uri": faker.uri(schemes=["https"]),
+        "response_type": "code",
+    })
+    response = client.post(f"/oauth2/authorize?{query}")
+    assert "The field is missing" in response.text

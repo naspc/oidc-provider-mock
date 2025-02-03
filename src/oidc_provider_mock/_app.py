@@ -426,10 +426,13 @@ def authorize() -> flask.typing.ResponseReturnValue:
                 )()
             )
 
-        # TODO: validate sub
-        user = storage.get_user(flask.request.form["sub"])
+        sub = flask.request.form.get("sub")
+        if sub is None:
+            return flask.render_template("authorization_form.html", sub_missing=True)
+
+        user = storage.get_user(sub)
         if not user:
-            user = User(sub=flask.request.form["sub"])
+            user = User(sub=sub)
             storage.store_user(user)
 
         try:
