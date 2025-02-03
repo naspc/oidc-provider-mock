@@ -1,55 +1,81 @@
-# pyright: reportUnknownMemberType=none
-from urllib.parse import parse_qs, urlsplit
+# pyright: reportUnknownMemberType=none, reportUnknownVariableType=none, reportUnknownArgumentType=none
+from dataclasses import dataclass
+from urllib.parse import parse_qsl, urljoin, urlparse
 
-import oic
-import oic.oic
-import oic.oic.message
+import authlib.jose
+import authlib.oauth2.rfc6749
+import authlib.oidc.core
+import httpx
+import pydantic
+from authlib.integrations.httpx_client import OAuth2Client
 from faker import Faker
-from oic.utils.authn.client import CLIENT_AUTHN_METHOD
 
 faker = Faker()
 
 
-class AuthorizationError(Exception):
-    def __init__(self, error: str, description: str | None = None) -> None:
-        self.error = error
-        self.description = description
+@dataclass(kw_only=True, frozen=True)
+class TokenData:
+    access_token: str
+    expires_in: int
+    claims: dict[str, object]
 
-        msg = f"Authorization failed: {error}"
-        if description:
-            msg = f"{msg}: {description}"
 
-        super().__init__(msg)
+class _TokenResponse(pydantic.BaseModel):
+    access_token: str
+    expires_in: int
+    id_token: str
 
 
 class OidcClient:
-    """A more practical wrapper for ``oic.oic.Client``"""
-
-    _oic_client: oic.oic.Client
-    _authmethod: str
+    _authlib_client: OAuth2Client
 
     def __init__(
         self,
-        provider_url: str,
+        issuer: str,
         *,
         id: str | None = None,
         redirect_uri: str | None = None,
         auth_method: str = "client_secret_basic",
         secret: str | None = None,
     ) -> None:
-        self._oic_client = oic.oic.Client(client_authn_method=CLIENT_AUTHN_METHOD)
-        self._oic_client.provider_config(provider_url)
-
-        self._oic_client.store_registration_info({
-            "client_id": id or str(faker.uuid4()),
-            "client_secret": secret or faker.password(),
-        })
-
         if redirect_uri is None:
             redirect_uri = faker.uri(schemes=["https"])
 
-        self._oic_client.redirect_uris = [redirect_uri]
+        self._id = id or str(faker.uuid4())
+        self._secret = secret or faker.password()
+
+        config = self.get_authorization_server_metadata(issuer)
+
+        self._jwks = authlib.jose.JsonWebKey.import_key_set(
+            httpx.get(config["jwks_uri"]).json()
+        )
+
+        self._provider_url = issuer
+
+        self._token_endpoint_url = config["token_endpoint"]
+        self._userinfo_enpoint_url = config["userinfo_endpoint"]
+        self._authorization_endpoint_url = config["authorization_endpoint"]
+
         self._auth_method = auth_method
+
+        self._authlib_client = OAuth2Client(
+            client_id=self._id,
+            client_secret=self._secret,
+            token_endpoint_auth_method=auth_method,
+            redirect_uri=redirect_uri,
+        )
+
+    @classmethod
+    def get_authorization_server_metadata(cls, provider_url: str):
+        # TODO: validate response schema
+        return (
+            httpx.get(
+                urljoin(provider_url, ".well-known/openid-configuration"),
+                follow_redirects=True,
+            )
+            .raise_for_status()
+            .json()
+        )
 
     @classmethod
     def register(
@@ -59,98 +85,157 @@ class OidcClient:
         auth_method: str = "client_secret_basic",
     ):
         """Register a client with the OpenID provider and instantiate it."""
-        oic_client = oic.oic.Client(client_authn_method=CLIENT_AUTHN_METHOD)
-        oic_client.provider_config(provider_url)
+        config = cls.get_authorization_server_metadata(provider_url)
 
         if redirect_uri is None:
             redirect_uri = faker.uri(schemes=["https"])
 
-        oic_client.register(
-            oic_client.registration_endpoint,  # type: ignore
-            token_endpoint_auth_method=auth_method,
-            redirect_uris=[redirect_uri],
-        )
+        # TODO: handle
+        if endpoint := config.get("registration_endpoint"):
+            content = (
+                httpx.post(
+                    endpoint,
+                    json={
+                        "redirect_uris": [redirect_uri],
+                        "token_endpoint_auth_method": auth_method,
+                    },
+                )
+                .raise_for_status()
+                .json()
+            )
+
+        else:
+            # TODO: Dedicated error class
+            raise Exception(
+                "Authorization server does not advertise registration endpoint"
+            )
 
         return cls(
             provider_url,
-            id=oic_client.client_id,  # pyright: ignore[reportUnknownArgumentType]
+            id=content["client_id"],
             redirect_uri=redirect_uri,
-            secret=oic_client.client_secret,  # pyright: ignore[reportUnknownArgumentType]
+            secret=content["client_secret"],
         )
 
     @property
     def secret(self) -> str:
-        secret = self._oic_client.client_secret  # pyright: ignore[reportUnknownVariableType]
-        assert isinstance(secret, str)
-        return secret
+        return self._secret
 
     @property
     def id(self) -> str:
-        id = self._oic_client.client_id  # pyright: ignore[reportUnknownVariableType]
-        assert isinstance(id, str)
-        return id
+        return self._id
 
-    def build_authorization_request(
+    def authorization_url(
         self,
         *,
         state: str,
         scope: str = "openid",
         response_type: str = "code",
         nonce: str | None = None,
-    ):
-        request_args = {
-            "response_type": response_type,
-            "state": state,
+    ) -> str:
+        extra = {
             "scope": scope,
+            "response_type": response_type,
         }
-
         if nonce is not None:
-            request_args["nonce"] = nonce
-        return self._oic_client.construct_AuthorizationRequest(
-            request_args=request_args
-        ).request(self._oic_client.authorization_endpoint)
+            extra["nonce"] = nonce
+
+        url, _state = self._authlib_client.create_authorization_url(
+            self._authorization_endpoint_url,
+            state,
+            code_verifier=None,
+            **extra,
+        )
+        return url
 
     def fetch_token(
-        self, auth_response_location: str, state: str, *, auth_method: str | None = None
-    ) -> oic.oic.message.AccessTokenResponse | oic.oic.message.TokenErrorResponse:
+        self,
+        auth_response_location: str,
+        state: str,
+    ) -> TokenData:
         """Parse authorization endpoint response embedded in the redirect location
         and fetches the token.
 
 
         :raises AuthorizationError: if authorization was unsuccessful.
         """
-        location = urlsplit(auth_response_location)
-        response = self._oic_client.parse_response(
-            oic.oic.message.AuthorizationResponse,
-            info=location.query,
-            sformat="urlencoded",
-        )
-        if isinstance(response, oic.oic.message.AuthorizationErrorResponse):
-            raise AuthorizationError(
-                response["error"],
-                response.get("error_description"),  # pyright: ignore[reportUnknownArgumentType]
+        # TODO: wrap authlib_integrations.base_client.OAuthError
+        query = urlparse(auth_response_location).query
+        params = dict(parse_qsl(query))
+
+        if error := params.get("error"):
+            raise AuthorizationError(error, params.get("error_description"))
+
+        if "state" not in params:
+            raise AuthorizationServerError(
+                "state parameter missing from authorization response"
+            )
+        if params["state"] != state:
+            raise AuthorizationServerError(
+                "state parameter in authorization_response does not match expected value"
             )
 
-        assert parse_qs(location.query)["state"] == [state]
-        response = self._oic_client.do_access_token_request(
+        authlib_token = self._authlib_client.fetch_token(
+            self._token_endpoint_url,
             state=state,
-            code=response["code"],
-            authn_method=auth_method or self._auth_method,
+            authorization_response=auth_response_location,
         )
 
-        assert isinstance(
-            response,
-            oic.oic.message.AccessTokenResponse | oic.oic.message.TokenErrorResponse,
+        try:
+            response = _TokenResponse.model_validate(authlib_token)
+        except pydantic.ValidationError as e:
+            # TODO: include validation error information
+            raise AuthorizationServerError("invalid token endpoint response") from e
+
+        claims = authlib.jose.jwt.decode(
+            response.id_token,
+            self._jwks,
+            claims_cls=authlib.oidc.core.CodeIDToken,
+            claims_params={"iss": self._provider_url},
+        )
+        claims.validate()
+
+        return TokenData(
+            access_token=response.access_token,
+            expires_in=response.expires_in,
+            claims=dict(claims),
         )
 
-        return response
-
-    def fetch_userinfo(
-        self, token: str
-    ) -> oic.oic.message.OpenIDSchema | oic.oic.message.UserInfoErrorResponse:
-        response = self._oic_client.do_user_info_request(token=token)  # pyright: ignore[reportUnknownVariableType]
-        assert isinstance(
-            response,
-            oic.oic.message.OpenIDSchema | oic.oic.message.UserInfoErrorResponse,
+    def fetch_userinfo(self, token: str):
+        # TODO: validate response schema
+        return (
+            httpx.get(
+                self._userinfo_enpoint_url, headers={"authorization": f"bearer {token}"}
+            )
+            .raise_for_status()
+            .json()
         )
-        return response
+
+
+class AuthorizationServerError(Exception):
+    """The authorization server sent an invalid response.
+
+    For example, the server did not return an access token from the token endpoint
+    response.
+    """
+
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
+
+
+class AuthorizationError(Exception):
+    """The authorization server responded with an error to the authorization request.
+
+    See [OAuth2.0 Authorization Error
+    Response](https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.2.1).
+    """
+
+    def __init__(self, error: str, description: str | None = None) -> None:
+        self.error = error
+        self.description = description
+
+        msg = f"Authorization failed: {error}"
+        if description:
+            msg = f"{msg}: {description}"
+
+        super().__init__(msg)

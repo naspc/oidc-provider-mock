@@ -7,14 +7,12 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
-import oic
-import oic.oic
-import oic.oic.message
 import pytest
+from authlib.integrations.base_client import OAuthError
 from faker import Faker
 
 from .conftest import use_provider_config
-from .test_oidc_client import AuthorizationError, OidcClient
+from .test_oidc_client import AuthorizationError, AuthorizationServerError, OidcClient
 
 faker = Faker()
 
@@ -31,19 +29,18 @@ def test_auth_success(oidc_server: str):
     client = OidcClient.register(oidc_server, redirect_uri=redirect_uri)
 
     response = httpx.post(
-        client.build_authorization_request(state=state, nonce=nonce),
+        client.authorization_url(state=state, nonce=nonce),
         data={"sub": subject},
     )
     assert response.status_code == 302
     location = response.headers["location"]
     assert location.startswith(redirect_uri)
-    response = client.fetch_token(location, state=state)
+    token_data = client.fetch_token(location, state=state)
 
-    assert isinstance(response, oic.oic.message.AccessTokenResponse)
-    assert response["id_token"]["sub"] == subject
-    assert response["id_token"]["nonce"] == nonce
+    assert token_data.claims["sub"] == subject
+    assert token_data.claims["nonce"] == nonce
 
-    userinfo = client.fetch_userinfo(token=response["access_token"])
+    userinfo = client.fetch_userinfo(token=token_data.access_token)
     assert userinfo["sub"] == subject
 
 
@@ -60,17 +57,16 @@ def test_custom_claims(oidc_server: str):
 
     client = OidcClient(oidc_server)
 
-    response = httpx.post(
-        client.build_authorization_request(state=state),
+    token_data = httpx.post(
+        client.authorization_url(state=state),
         data={"sub": subject},
     )
 
-    response = client.fetch_token(response.headers["location"], state=state)
-    assert isinstance(response, oic.oic.message.AccessTokenResponse)
-    assert response["id_token"]["sub"] == subject
-    assert response["id_token"]["custom"] == "CLAIM"
+    token_data = client.fetch_token(token_data.headers["location"], state=state)
+    assert token_data.claims["sub"] == subject
+    assert token_data.claims["custom"] == "CLAIM"
 
-    userinfo = client.fetch_userinfo(token=response["access_token"])
+    userinfo = client.fetch_userinfo(token=token_data.access_token)
     assert userinfo["sub"] == subject
     assert userinfo["custom"] == "CLAIM"
 
@@ -97,24 +93,22 @@ def test_include_all_claims(oidc_server: str):
     client = OidcClient(oidc_server)
 
     response = httpx.post(
-        client.build_authorization_request(
+        client.authorization_url(
             state=state,
             scope="openid profile email address phone",
         ),
         data={"sub": subject},
     )
 
-    response = client.fetch_token(response.headers["location"], state=state)
-    assert isinstance(response, oic.oic.message.AccessTokenResponse)
-    id_token = response["id_token"]
-    assert id_token["sub"] == subject
-    assert id_token["name"] == claims["name"]
-    assert id_token["website"] == claims["website"]
-    assert id_token["email"] == claims["email"]
-    assert id_token["address"]["formatted"] == claims["address"]["formatted"]
-    assert id_token["phone"] == claims["phone"]
+    token_data = client.fetch_token(response.headers["location"], state=state)
+    assert token_data.claims["sub"] == subject
+    assert token_data.claims["name"] == claims["name"]
+    assert token_data.claims["website"] == claims["website"]
+    assert token_data.claims["email"] == claims["email"]
+    assert token_data.claims["address"]["formatted"] == claims["address"]["formatted"]  # type: ignore
+    assert token_data.claims["phone"] == claims["phone"]
 
-    user_info = client.fetch_userinfo(token=response["access_token"])
+    user_info = client.fetch_userinfo(token=token_data.access_token)
     assert user_info["sub"] == subject
     assert user_info["name"] == claims["name"]
     assert user_info["website"] == claims["website"]
@@ -129,7 +123,7 @@ def test_auth_denied(oidc_server: str):
     client = OidcClient(oidc_server)
 
     response = httpx.post(
-        client.build_authorization_request(state=faker.password()),
+        client.authorization_url(state=faker.password()),
         data={"action": "deny"},
     )
 
@@ -144,7 +138,7 @@ def test_client_not_registered(oidc_server: str):
     client = OidcClient(oidc_server)
 
     response = httpx.post(
-        client.build_authorization_request(state=state),
+        client.authorization_url(state=state),
         data={"sub": faker.email()},
     )
 
@@ -165,16 +159,12 @@ def test_wrong_client_secret(oidc_server: str):
     client = OidcClient(oidc_server, id=client.id, redirect_uri=redirect_uri)
 
     response = httpx.post(
-        client.build_authorization_request(state=state),
+        client.authorization_url(state=state),
         data={"sub": faker.email()},
     )
 
-    response = client.fetch_token(response.headers["location"], state=state)
-    assert isinstance(response, oic.oic.message.TokenErrorResponse)
-    assert dict(response) == {
-        "error": "invalid_client",
-        "state": state,
-    }
+    with pytest.raises(OAuthError, match="invalid_client: "):
+        client.fetch_token(response.headers["location"], state=state)
 
 
 @pytest.mark.parametrize(
@@ -189,30 +179,34 @@ def test_client_auth_methods(oidc_server: str, auth_method: str):
     state = faker.password()
 
     client = OidcClient(oidc_server, auth_method=auth_method)
-    auth_url = client.build_authorization_request(state=state)
+    auth_url = client.authorization_url(state=state)
     response = httpx.post(auth_url, data={"sub": subject})
 
-    response = client.fetch_token(response.headers["location"], state)
-    assert response["id_token"]["sub"] == subject
+    token_data = client.fetch_token(response.headers["location"], state)
+    assert token_data.claims["sub"] == subject
 
-    userinfo = client.fetch_userinfo(token=response["access_token"])
+    userinfo = client.fetch_userinfo(token=token_data.access_token)
     assert userinfo["sub"] == subject
 
 
 def test_auth_methods_not_supported_for_client(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient.register(oidc_server, auth_method="client_secret_basic")
-    auth_url = client.build_authorization_request(state=state)
-    response = httpx.post(auth_url, data={"sub": faker.email()})
-    response = client.fetch_token(
-        response.headers["location"], state=state, auth_method="client_secret_post"
+    redirect_uri = faker.uri()
+    client = OidcClient.register(
+        oidc_server, redirect_uri=redirect_uri, auth_method="client_secret_basic"
     )
-    assert isinstance(response, oic.oic.message.TokenErrorResponse)
-    assert dict(response) == {
-        "error": "invalid_client",
-        "state": state,
-    }
+    client = OidcClient(
+        oidc_server,
+        id=client.id,
+        redirect_uri=redirect_uri,
+        auth_method="client_secret_post",
+        secret=client.secret,
+    )
+    auth_url = client.authorization_url(state=state)
+    response = httpx.post(auth_url, data={"sub": faker.email()})
+    with pytest.raises(OAuthError, match="invalid_client: "):
+        client.fetch_token(response.headers["location"], state=state)
 
 
 @use_provider_config(require_nonce=True)
@@ -220,19 +214,19 @@ def test_nonce_required_error(oidc_server: str):
     state = faker.password()
 
     client = OidcClient(oidc_server)
-    auth_url = client.build_authorization_request(state=state)
-    response = httpx.post(auth_url, data={"sub": faker.email()})
+    auth_url = client.authorization_url(state=state)
+    token_data = httpx.post(auth_url, data={"sub": faker.email()})
     with pytest.raises(
         AuthorizationError,
         match='Authorization failed: invalid_request: Missing "nonce" in request',
     ):
-        client.fetch_token(response.headers["location"], state=state)
+        client.fetch_token(token_data.headers["location"], state=state)
 
     nonce = faker.password()
-    auth_url = client.build_authorization_request(state=state, nonce=nonce)
-    response = httpx.post(auth_url, data={"sub": faker.email()})
-    response = client.fetch_token(response.headers["location"], state=state)
-    assert response["id_token"]["nonce"] == nonce
+    auth_url = client.authorization_url(state=state, nonce=nonce)
+    token_data = httpx.post(auth_url, data={"sub": faker.email()})
+    token_data = client.fetch_token(token_data.headers["location"], state=state)
+    assert token_data.claims["nonce"] == nonce
 
 
 def test_no_openid_scope(oidc_server: str):
@@ -242,13 +236,14 @@ def test_no_openid_scope(oidc_server: str):
     client = OidcClient(oidc_server)
 
     response = httpx.post(
-        client.build_authorization_request(state=state, scope="foo bar"),
+        client.authorization_url(state=state, scope="foo bar"),
         data={"sub": subject},
     )
 
-    response = client.fetch_token(response.headers["location"], state)
-    assert response["token_type"] == "Bearer"
-    assert "id_token" not in response
+    with pytest.raises(
+        AuthorizationServerError, match="invalid token endpoint response"
+    ):
+        client.fetch_token(response.headers["location"], state)
 
 
 @use_provider_config(access_token_max_age=timedelta(minutes=111))
@@ -259,12 +254,11 @@ def test_token_expiry(oidc_server: str):
     client = OidcClient.register(oidc_server)
 
     response = httpx.post(
-        client.build_authorization_request(state=state),
+        client.authorization_url(state=state),
         data={"sub": subject},
     )
     assert response.status_code == 302
-    response = client.fetch_token(response.headers["location"], state=state)
+    token_data = client.fetch_token(response.headers["location"], state=state)
 
-    assert isinstance(response, oic.oic.message.AccessTokenResponse)
-    assert response["id_token"]["exp"] - response["id_token"]["iat"] == 111 * 60
-    assert response["expires_in"] == 111 * 60
+    assert token_data.claims["exp"] - token_data.claims["iat"] == 111 * 60  # type: ignore
+    assert token_data.expires_in == 111 * 60

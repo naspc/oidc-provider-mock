@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=none
 
 import dataclasses
+import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -22,6 +23,11 @@ from oidc_provider_mock._app import Config  # noqa: E402
 @pytest.fixture
 def app():
     return oidc_provider_mock.app()
+
+
+@pytest.fixture(autouse=True)
+def setup_logging():
+    logging.getLogger("oidc_provider_mock").setLevel(logging.DEBUG)
 
 
 @pytest.fixture
