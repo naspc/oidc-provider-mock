@@ -4,7 +4,6 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -75,7 +74,7 @@ class GithubSourceDomain(Domain):
         node: sphinx.addnodes.pending_xref,
         contnode: docutils.nodes.Element,
     ) -> list[tuple[str, docutils.nodes.Element]]:
-        if not re.match(r"\Aexamples/.*", target):
+        if not Path(__file__).parent.parent.joinpath(target).exists():
             return []
 
         reference = docutils.nodes.reference(
