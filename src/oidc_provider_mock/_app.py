@@ -410,7 +410,11 @@ def register_client():
 @blueprint.route("/oauth2/authorize", methods=["GET", "POST"])
 def authorize() -> flask.typing.ResponseReturnValue:
     request = FlaskOAuth2Request(flask.request)
-    grant, redirect_uri = _validate_auth_request_client_params(flask.request)
+    try:
+        grant, redirect_uri = _validate_auth_request_client_params(flask.request)
+    except _AuthorizationValidationException:
+        _logger.warning("invalid authorization request", exc_info=True)
+        raise
 
     if flask.request.method == "GET":
         return flask.render_template("authorization_form.html")
@@ -430,14 +434,19 @@ def authorize() -> flask.typing.ResponseReturnValue:
 
         try:
             response = grant.create_authorization_response(redirect_uri, user)  # pyright: ignore
+            _logger.info(
+                "issued authorization code",
+                extra=({"client": grant.client, "user": user}),
+            )
             return authorization.handle_response(*response)  # pyright: ignore
         except authlib.oauth2.OAuth2Error as error:
+            _logger.warning("invalid authorization request", exc_info=True)
             return authorization.handle_error_response(request, error)  # pyright: ignore
 
 
 def _validate_auth_request_client_params(
     flask_request: flask.Request,
-) -> tuple[authlib.oauth2.rfc6749.AuthorizationEndpointMixin, str]:
+) -> tuple[AuthorizationCodeGrant | RefreshTokenGrant, str]:
     """Validate query parameters sent by the client to the authorization endpoint.
 
     Raises ``_AuthorizationValidationException`` if validation fails which results
@@ -448,6 +457,7 @@ def _validate_auth_request_client_params(
 
     try:
         grant = authorization.get_consent_grant()  # type: ignore
+        assert isinstance(grant, AuthorizationCodeGrant)
         assert isinstance(grant, authlib.oauth2.rfc6749.AuthorizationEndpointMixin)
         redirect_uri = grant.validate_authorization_request()  # pyright: ignore
         assert isinstance(redirect_uri, str)
@@ -505,12 +515,14 @@ def issue_token() -> flask.typing.ResponseReturnValue:
         _logger.warning("unsupported grant type when issuing token", exc_info=error)
         return authorization.handle_error_response(request, error)  # type: ignore
 
+    assert isinstance(grant, AuthorizationCodeGrant | RefreshTokenGrant)
+
     try:
-        grant.validate_token_request()  # type: ignore
+        grant.validate_token_request()
         args = grant.create_token_response()  # type: ignore
         return authorization.handle_response(*args)  # type: ignore
     except OAuth2Error as error:
-        _logger.warning("failed to issue token", exc_info=error)
+        _logger.warning("did not issue token", exc_info=error)
         return authorization.handle_error_response(request, error)  # type: ignore
 
 
