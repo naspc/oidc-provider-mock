@@ -16,12 +16,6 @@ from .conftest import TestServer, run_server, use_provider_config
 
 
 @pytest.fixture
-def app(oidc_server: str):
-    app = flask_oidc_example.build_app(oidc_server)
-    return app
-
-
-@pytest.fixture
 def relying_party(oidc_server: str):
     with run_server(flask_oidc_example.build_app(oidc_server)) as server:
         yield server
