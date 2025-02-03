@@ -173,7 +173,7 @@ authorization = cast(
     werkzeug.local.LocalProxy(lambda: flask.g._authlib_authorization_server),
 )
 
-blueprint = flask.Blueprint("oidc-provider-mock-authlib", __name__)
+blueprint = flask.Blueprint("oidc-provider-mock", __name__)
 
 
 @dataclass(kw_only=True, frozen=True)
