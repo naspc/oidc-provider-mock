@@ -230,35 +230,72 @@ def test_nonce_required_error(oidc_server: str):
 
 
 def test_no_openid_scope(oidc_server: str):
-    subject = faker.email()
     state = faker.password()
 
     client = OidcClient(oidc_server)
 
     response = httpx.post(
         client.authorization_url(state=state, scope="foo bar"),
-        data={"sub": subject},
+        data={"sub": faker.email()},
     )
 
     with pytest.raises(
-        AuthorizationServerError, match="invalid token endpoint response"
+        AuthorizationServerError, match="missing id_token from token endpoint response"
     ):
         client.fetch_token(response.headers["location"], state)
 
 
 @use_provider_config(access_token_max_age=timedelta(minutes=111))
 def test_token_expiry(oidc_server: str):
-    subject = faker.email()
     state = faker.password()
 
     client = OidcClient.register(oidc_server)
 
     response = httpx.post(
         client.authorization_url(state=state),
-        data={"sub": subject},
+        data={"sub": faker.email()},
     )
     assert response.status_code == 302
     token_data = client.fetch_token(response.headers["location"], state=state)
 
     assert token_data.claims["exp"] - token_data.claims["iat"] == 111 * 60  # type: ignore
     assert token_data.expires_in == 111 * 60
+
+
+@use_provider_config(issue_refresh_token=False)
+def test_no_refresh_token(oidc_server: str):
+    state = faker.password()
+
+    client = OidcClient.register(oidc_server)
+
+    response = httpx.post(
+        client.authorization_url(state=state),
+        data={"sub": faker.email()},
+    )
+    assert response.status_code == 302
+    token_data = client.fetch_token(response.headers["location"], state=state)
+
+    assert token_data.refresh_token is None
+
+
+def test_refresh_token(oidc_server: str):
+    state = faker.password()
+
+    client = OidcClient.register(oidc_server)
+
+    response = httpx.post(
+        client.authorization_url(state=state),
+        data={"sub": faker.email()},
+    )
+
+    token_data = client.fetch_token(response.headers["location"], state=state)
+
+    assert token_data.refresh_token is not None
+    refresh_token_data = client.refresh_token(refresh_token=token_data.refresh_token)
+
+    with pytest.raises(httpx.HTTPStatusError) as e:
+        client.fetch_userinfo(token=token_data.access_token)
+
+    assert e.value.response.json()["error"] == "access_denied"
+
+    client.fetch_userinfo(token=refresh_token_data.access_token)

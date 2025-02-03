@@ -17,13 +17,16 @@ faker = Faker()
 class TokenData:
     access_token: str
     expires_in: int
+    refresh_token: str | None
     claims: dict[str, object]
 
 
-class _TokenResponse(pydantic.BaseModel):
+@dataclass(kw_only=True, frozen=True)
+class RefreshTokenData:
     access_token: str
     expires_in: int
-    id_token: str
+    refresh_token: str | None
+    claims: dict[str, object] | None
 
 
 class OidcClient:
@@ -159,7 +162,6 @@ class OidcClient:
 
         :raises AuthorizationError: if authorization was unsuccessful.
         """
-        # TODO: wrap authlib_integrations.base_client.OAuthError
         query = urlparse(auth_response_location).query
         params = dict(parse_qsl(query))
 
@@ -175,6 +177,7 @@ class OidcClient:
                 "state parameter in authorization_response does not match expected value"
             )
 
+        # TODO: wrap authlib_integrations.base_client.OAuthError
         authlib_token = self._authlib_client.fetch_token(
             self._token_endpoint_url,
             state=state,
@@ -186,6 +189,11 @@ class OidcClient:
         except pydantic.ValidationError as e:
             # TODO: include validation error information
             raise AuthorizationServerError("invalid token endpoint response") from e
+
+        if response.id_token is None:
+            raise AuthorizationServerError(
+                "missing id_token from token endpoint response"
+            )
 
         claims = authlib.jose.jwt.decode(
             response.id_token,
@@ -199,6 +207,7 @@ class OidcClient:
             access_token=response.access_token,
             expires_in=response.expires_in,
             claims=dict(claims),
+            refresh_token=response.refresh_token,
         )
 
     def fetch_userinfo(self, token: str):
@@ -209,6 +218,38 @@ class OidcClient:
             )
             .raise_for_status()
             .json()
+        )
+
+    def refresh_token(self, refresh_token: str) -> RefreshTokenData:
+        authlib_token = self._authlib_client.fetch_token(
+            self._token_endpoint_url,
+            refresh_token=refresh_token,
+            grant_type="refresh_token",
+        )
+
+        try:
+            response = _TokenResponse.model_validate(authlib_token)
+        except pydantic.ValidationError as e:
+            # TODO: include validation error information
+            raise AuthorizationServerError("invalid token endpoint response") from e
+
+        if response.id_token:
+            claims = authlib.jose.jwt.decode(
+                response.id_token,
+                self._jwks,
+                claims_cls=authlib.oidc.core.CodeIDToken,
+                claims_params={"iss": self._provider_url},
+            )
+            claims.validate()
+            claims = dict(claims)
+        else:
+            claims = None
+
+        return RefreshTokenData(
+            access_token=response.access_token,
+            expires_in=response.expires_in,
+            claims=claims,
+            refresh_token=response.refresh_token,
         )
 
 
@@ -239,3 +280,16 @@ class AuthorizationError(Exception):
             msg = f"{msg}: {description}"
 
         super().__init__(msg)
+
+
+class _TokenResponse(pydantic.BaseModel):
+    """Response body for successful requests to the token endpoint.
+
+    See https://www.rfc-editor.org/rfc/rfc6749.html#section-5 and
+    https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
+    """
+
+    access_token: str
+    expires_in: int
+    refresh_token: str | None = None
+    id_token: str | None = None

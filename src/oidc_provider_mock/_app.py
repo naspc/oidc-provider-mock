@@ -529,6 +529,7 @@ def issue_token() -> flask.typing.ResponseReturnValue:
 @blueprint.route("/userinfo", methods=["GET", "POST"])
 @require_oauth()
 def userinfo():
+    # TODO: return 401 when access token expired
     access_token = flask_oauth2.current_token
     assert isinstance(access_token, AccessToken)
     return flask.jsonify(
