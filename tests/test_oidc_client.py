@@ -8,9 +8,6 @@ import authlib.oidc.core
 import httpx
 import pydantic
 from authlib.integrations.httpx_client import OAuth2Client
-from faker import Faker
-
-faker = Faker()
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -31,24 +28,22 @@ class RefreshTokenData:
 
 class OidcClient:
     DEFAULT_SCOPE = "openid email"
+    DEFAULT_AUTH_METHOD = "client_secret_basic"
 
     _authlib_client: OAuth2Client
 
     def __init__(
         self,
-        issuer: str,
         *,
-        id: str | None = None,
-        redirect_uri: str | None = None,
-        auth_method: str = "client_secret_basic",
+        id: str,
+        redirect_uri: str,
+        secret: str,
+        issuer: str,
+        auth_method: str = DEFAULT_AUTH_METHOD,
         scope: str = DEFAULT_SCOPE,
-        secret: str | None = None,
     ) -> None:
-        if redirect_uri is None:
-            redirect_uri = faker.uri(schemes=["https"])
-
-        self._id = id or str(faker.uuid4())
-        self._secret = secret or faker.password()
+        self._id = id
+        self._secret = secret
         self._scope = scope
 
         config = self.get_authorization_server_metadata(issuer)
@@ -88,16 +83,13 @@ class OidcClient:
     def register(
         cls,
         provider_url: str,
-        redirect_uri: str | None = None,
+        redirect_uri: str,
         scope: str = DEFAULT_SCOPE,
         auth_method: str = "client_secret_basic",
     ):
         """Register a client with the OpenID provider and instantiate it."""
 
         config = cls.get_authorization_server_metadata(provider_url)
-
-        if redirect_uri is None:
-            redirect_uri = faker.uri(schemes=["https"])
 
         # TODO: handle
         if endpoint := config.get("registration_endpoint"):
@@ -121,10 +113,10 @@ class OidcClient:
             )
 
         return cls(
-            provider_url,
             id=content["client_id"],
             redirect_uri=redirect_uri,
             scope=scope,
+            issuer=provider_url,
             secret=content["client_secret"],
         )
 

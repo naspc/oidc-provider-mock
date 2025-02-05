@@ -56,7 +56,7 @@ def test_custom_claims(oidc_server: str):
         json={"custom": "CLAIM"},
     ).raise_for_status()
 
-    client = OidcClient(oidc_server)
+    client = fake_client(issuer=oidc_server)
 
     token_data = httpx.post(
         client.authorization_url(state=state),
@@ -91,8 +91,8 @@ def test_include_all_claims(oidc_server: str):
 
     httpx.put(f"{oidc_server}/users/{subject}", json=claims).raise_for_status()
 
-    client = OidcClient(
-        oidc_server,
+    client = fake_client(
+        issuer=oidc_server,
         scope="openid profile email address phone",
     )
 
@@ -121,7 +121,7 @@ def test_include_all_claims(oidc_server: str):
 def test_auth_denied(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient(oidc_server)
+    client = fake_client(oidc_server)
 
     response = httpx.post(
         client.authorization_url(state=faker.password()),
@@ -136,7 +136,7 @@ def test_auth_denied(oidc_server: str):
 def test_client_not_registered(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient(oidc_server)
+    client = fake_client(oidc_server)
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -157,7 +157,12 @@ def test_wrong_client_secret(oidc_server: str):
     client = OidcClient.register(oidc_server, redirect_uri=redirect_uri)
 
     # Create a second client with the same ID but different secret
-    client = OidcClient(oidc_server, id=client.id, redirect_uri=redirect_uri)
+    client = OidcClient(
+        issuer=oidc_server,
+        id=client.id,
+        secret="foobar",
+        redirect_uri=redirect_uri,
+    )
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -179,7 +184,7 @@ def test_client_auth_methods(oidc_server: str, auth_method: str):
     subject = faker.email()
     state = faker.password()
 
-    client = OidcClient(oidc_server, auth_method=auth_method)
+    client = fake_client(oidc_server, auth_method=auth_method)
     auth_url = client.authorization_url(state=state)
     response = httpx.post(auth_url, data={"sub": subject})
 
@@ -198,11 +203,11 @@ def test_auth_methods_not_supported_for_client(oidc_server: str):
         oidc_server, redirect_uri=redirect_uri, auth_method="client_secret_basic"
     )
     client = OidcClient(
-        oidc_server,
         id=client.id,
         redirect_uri=redirect_uri,
         auth_method="client_secret_post",
         secret=client.secret,
+        issuer=oidc_server,
     )
     auth_url = client.authorization_url(state=state)
     response = httpx.post(auth_url, data={"sub": faker.email()})
@@ -214,7 +219,7 @@ def test_auth_methods_not_supported_for_client(oidc_server: str):
 def test_nonce_required_error(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient(oidc_server)
+    client = fake_client(oidc_server)
     auth_url = client.authorization_url(state=state)
     token_data = httpx.post(auth_url, data={"sub": faker.email()})
     with pytest.raises(
@@ -233,7 +238,7 @@ def test_nonce_required_error(oidc_server: str):
 def test_no_openid_scope(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient(oidc_server, scope="foo bar")
+    client = fake_client(oidc_server, scope="foo bar")
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -249,7 +254,11 @@ def test_no_openid_scope(oidc_server: str):
 def test_no_email_scope(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient.register(oidc_server, scope="openid")
+    client = OidcClient.register(
+        oidc_server,
+        scope="openid",
+        redirect_uri=faker.uri(schemes=["https"]),
+    )
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -264,7 +273,7 @@ def test_no_email_scope(oidc_server: str):
 def test_token_expiry(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient.register(oidc_server)
+    client = OidcClient.register(oidc_server, redirect_uri=faker.uri(schemes=["https"]))
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -281,7 +290,7 @@ def test_token_expiry(oidc_server: str):
 def test_no_refresh_token(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient.register(oidc_server)
+    client = OidcClient.register(oidc_server, redirect_uri=faker.uri(schemes=["https"]))
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -296,7 +305,7 @@ def test_no_refresh_token(oidc_server: str):
 def test_refresh_token(oidc_server: str):
     state = faker.password()
 
-    client = OidcClient.register(oidc_server)
+    client = OidcClient.register(oidc_server, redirect_uri=faker.uri(schemes=["https"]))
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -314,3 +323,19 @@ def test_refresh_token(oidc_server: str):
     assert e.value.response.json()["error"] == "access_denied"
 
     client.fetch_userinfo(token=refresh_token_data.access_token)
+
+
+def fake_client(
+    issuer: str,
+    *,
+    scope: str = OidcClient.DEFAULT_SCOPE,
+    auth_method: str = OidcClient.DEFAULT_AUTH_METHOD,
+):
+    return OidcClient(
+        id=str(faker.uuid4()),
+        secret=faker.password(),
+        redirect_uri=faker.uri(schemes=["https"]),
+        issuer=issuer,
+        scope=scope,
+        auth_method=auth_method,
+    )
