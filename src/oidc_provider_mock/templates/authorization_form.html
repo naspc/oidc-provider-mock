@@ -1,29 +1,24 @@
-<!doctype html>
-<link
-  rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
-/>
-<main class="container" style="max-width: 40rem">
-  <h1>Authorize Client</h1>
-  <p>Client ID: {{ client_id }}</p>
-  <form method="post">
-    {% if sub_missing %}
-    <input
-      type="text"
-      name="sub"
-      placeholder="sub"
-      required
-      aria-invalid="true"
-      aria-describedby="sub-missing"
-    />
-    <small id="sub-missing">The field is missing</small>
-    {% else %}
-    <input type="text" name="sub" placeholder="sub" required />
-    {% endif %}
-    <button type="submit">Authorize</button>
-  </form>
-  <form method="post">
-    <button type="submit" name="action" value="deny">Deny</button>
-  </form>
-  <p>You will be redirected to {{ redirect_uri }}</p>
-</main>
+{% extends "_base.html" %} {% block content %}
+<h1>Authorize Client</h1>
+<p>Client ID: {{ client_id }}</p>
+<form method="post">
+  {% if sub_missing %}
+  <input
+    type="text"
+    name="sub"
+    placeholder="sub"
+    required
+    aria-invalid="true"
+    aria-describedby="sub-missing"
+  />
+  <small id="sub-missing">The field is missing</small>
+  {% else %}
+  <input type="text" name="sub" placeholder="sub" required />
+  {% endif %}
+  <button type="submit">Authorize</button>
+</form>
+<form method="post">
+  <button type="submit" name="action" value="deny">Deny</button>
+</form>
+<p>You will be redirected to {{ redirect_uri }}</p>
+{% endblock %}

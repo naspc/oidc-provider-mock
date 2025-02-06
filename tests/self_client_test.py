@@ -9,6 +9,7 @@ def test_auth_success(oidc_server: str, page: Page):
     subject = faker.email()
 
     page.goto(f"{oidc_server}/oidc/login")
+    page.get_by_role("button", name="Start").click()
     expect(page.get_by_role("heading")).to_have_text("Authorize Client")
     page.get_by_placeholder("sub").fill(subject)
     page.get_by_role("button", name="Authorize").click()
@@ -17,6 +18,7 @@ def test_auth_success(oidc_server: str, page: Page):
 
 def test_auth_deny(oidc_server: str, page: Page):
     page.goto(f"{oidc_server}/oidc/login")
+    page.get_by_role("button", name="Start").click()
     page.get_by_role("button", name="Deny").click()
     expect(page.get_by_role("heading")).to_have_text("Authentication Error")
     expect(page.locator("body")).to_contain_text("access_denied")

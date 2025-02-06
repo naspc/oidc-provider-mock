@@ -27,6 +27,22 @@ def login():
     nonce = secrets.token_urlsafe(16)
     flask.session[_SESSION_KEY_STATE] = state
     flask.session[_SESSION_KEY_NONCE] = nonce
+    return _render_page(
+        h.h1["Authenticate with OpenID Connect"],
+        h.p[
+            f"Start authentication with OpenID Connect Provider {flask.request.root_url}"
+        ],
+        h.form(method="post")[h.button["Start"]],
+    )
+
+
+@blueprint.post("/oidc/login")
+def login_post():
+    client = _get_client()
+    state = secrets.token_urlsafe(16)
+    nonce = secrets.token_urlsafe(16)
+    flask.session[_SESSION_KEY_STATE] = state
+    flask.session[_SESSION_KEY_NONCE] = nonce
     return flask.redirect(client.authorization_url(state=state, nonce=nonce))
 
 
@@ -76,12 +92,4 @@ def _get_client() -> OidcClient:
 
 
 def _render_page(*content: h.Node) -> str:
-    return str(
-        h.html[
-            h.link(
-                rel="stylesheet",
-                href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css",
-            ),
-            h.main(".container")[content],
-        ]
-    )
+    return flask.render_template("_base.html", content=h.render_node(content))
