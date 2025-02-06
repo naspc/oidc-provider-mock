@@ -71,7 +71,7 @@ def _get_client() -> OidcClient:
         id="my-client-id",
         secret="my-client-secret",
         redirect_uri=_url_for(authorized, _external=True),
-        issuer=flask.request.root_url,
+        provider_url=flask.request.root_url,
     )
 
 

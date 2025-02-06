@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urljoin, urlparse
 
-import authlib.jose
-import authlib.oauth2.rfc6749
-import authlib.oidc.core
 import httpx
+import joserfc.jwk
+import joserfc.jwt
 import pydantic
 from authlib.integrations.httpx_client import OAuth2Client
 
@@ -37,7 +36,7 @@ class OidcClient:
         id: str,
         redirect_uri: str,
         secret: str,
-        issuer: str,
+        provider_url: str,
         auth_method: str = DEFAULT_AUTH_METHOD,
         scope: str = DEFAULT_SCOPE,
     ) -> None:
@@ -45,14 +44,14 @@ class OidcClient:
         self._secret = secret
         self._scope = scope
 
-        config = self.get_authorization_server_metadata(issuer)
+        # TODO: validate response
+        config = self.get_authorization_server_metadata(provider_url)
 
-        self._jwks = authlib.jose.JsonWebKey.import_key_set(  # pyright: ignore[reportUnknownMemberType]
+        self._jwks = joserfc.jwk.KeySet.import_key_set(
             httpx.get(config["jwks_uri"]).json()
         )
 
-        self._provider_url = issuer
-
+        self._issuer = config["issuer"]
         self._token_endpoint_url = config["token_endpoint"]
         self._userinfo_enpoint_url = config["userinfo_endpoint"]
         self._authorization_endpoint_url = config["authorization_endpoint"]
@@ -115,7 +114,7 @@ class OidcClient:
             id=content["client_id"],
             redirect_uri=redirect_uri,
             scope=scope,
-            issuer=provider_url,
+            provider_url=provider_url,
             secret=content["client_secret"],
         )
 
@@ -197,19 +196,13 @@ class OidcClient:
                 "missing id_token from token endpoint response"
             )
 
-        claims = authlib.jose.jwt.decode(  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
-            response.id_token,
-            self._jwks,
-            claims_cls=authlib.oidc.core.CodeIDToken,
-            claims_params={"iss": self._provider_url},
-        )
-        assert isinstance(claims, authlib.jose.JWTClaims)
-        claims.validate()  # pyright: ignore[reportUnknownMemberType]
+        # FIXME: check claims!!
+        token = joserfc.jwt.decode(response.id_token, self._jwks)
 
         return TokenData(
             access_token=response.access_token,
             expires_in=response.expires_in,
-            claims=dict(claims),
+            claims=token.claims,
             refresh_token=response.refresh_token,
         )
 
@@ -237,15 +230,8 @@ class OidcClient:
             raise AuthorizationServerError("invalid token endpoint response") from e
 
         if response.id_token:
-            jwt_claims = authlib.jose.jwt.decode(  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
-                response.id_token,
-                self._jwks,
-                claims_cls=authlib.oidc.core.CodeIDToken,
-                claims_params={"iss": self._provider_url},
-            )
-            assert isinstance(jwt_claims, authlib.jose.JWTClaims)
-            jwt_claims.validate()  # pyright: ignore[reportUnknownMemberType]
-            claims = dict[str, object](jwt_claims)
+            # FIXME: check claims!!
+            claims = joserfc.jwt.decode(response.id_token, self._jwks).claims
         else:
             claims = None
 
