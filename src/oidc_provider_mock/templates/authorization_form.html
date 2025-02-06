@@ -5,6 +5,7 @@
 />
 <main class="container" style="max-width: 40rem">
   <h1>Authorize Client</h1>
+  <p>Client ID: {{ client_id }}</p>
   <form method="post">
     {% if sub_missing %}
     <input
@@ -24,4 +25,5 @@
   <form method="post">
     <button type="submit" name="action" value="deny">Deny</button>
   </form>
+  <p>You will be redirected to {{ redirect_uri }}</p>
 </main>

@@ -11,8 +11,13 @@ import pytest
 from authlib.integrations.base_client import OAuthError
 from faker import Faker
 
+from oidc_provider_mock._client_lib import (
+    AuthorizationError,
+    AuthorizationServerError,
+    OidcClient,
+)
+
 from .conftest import use_provider_config
-from .test_oidc_client import AuthorizationError, AuthorizationServerError, OidcClient
 
 faker = Faker()
 

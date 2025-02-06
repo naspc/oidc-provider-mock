@@ -15,6 +15,7 @@ import authlib.oidc.core.grants
 import flask
 import flask.typing
 import pydantic
+import werkzeug.debug
 import werkzeug.exceptions
 import werkzeug.local
 from authlib import jose
@@ -23,6 +24,7 @@ from authlib.integrations.flask_oauth2.authorization_server import FlaskOAuth2Re
 from authlib.oauth2 import OAuth2Error, OAuth2Request
 from typing_extensions import override
 
+from . import _client
 from ._storage import (
     AccessToken,
     AuthorizationCode,
@@ -305,6 +307,7 @@ def app(
         issue_refresh_token=issue_refresh_token,
         access_token_max_age=access_token_max_age,
     )
+    app.secret_key = secrets.token_bytes(16)
     if isinstance(app.json, flask.json.provider.DefaultJSONProvider):
         # Make it easier to debug responses
         app.json.compact = False
@@ -344,6 +347,13 @@ def init_app(
             access_token_max_age=access_token_max_age,
         ),
     )
+
+    app.register_blueprint(_client.blueprint)
+
+    app.debug = True
+    app.wsgi_app = werkzeug.debug.DebuggedApplication(app.wsgi_app)
+    app.wsgi_app.trusted_hosts.append("localhost")
+
     return app
 
 
@@ -415,12 +425,17 @@ def authorize() -> flask.typing.ResponseReturnValue:
     request = FlaskOAuth2Request(flask.request)
     try:
         grant, redirect_uri = _validate_auth_request_client_params(flask.request)
+        assert isinstance(grant.client, Client)
     except _AuthorizationValidationException:
         _logger.warning("invalid authorization request", exc_info=True)
         raise
 
     if flask.request.method == "GET":
-        return flask.render_template("authorization_form.html")
+        return flask.render_template(
+            "authorization_form.html",
+            redirect_uri=redirect_uri,
+            client_id=grant.client.id,
+        )
     else:
         if flask.request.form.get("action") == "deny":
             return authorization.handle_response(  # pyright: ignore[reportUnknownMemberType]
@@ -431,7 +446,12 @@ def authorize() -> flask.typing.ResponseReturnValue:
 
         sub = flask.request.form.get("sub")
         if sub is None:
-            return flask.render_template("authorization_form.html", sub_missing=True)
+            return flask.render_template(
+                "authorization_form.html",
+                redirect_uri=redirect_uri,
+                client_id=grant.client.id,
+                sub_missing=True,
+            )
 
         user = storage.get_user(sub)
         if not user:
