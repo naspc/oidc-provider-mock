@@ -141,14 +141,18 @@ class Logfmter(logging.Formatter):
         if self._color:
             if record.levelno >= logging.ERROR:
                 out += _ANSI_RED
-            if record.levelno >= logging.WARNING:
+            elif record.levelno >= logging.WARNING:
                 out += _ANSI_YELLOW
-            if record.levelno >= logging.INFO:
+                level_name = "WARN"
+            elif record.levelno >= logging.INFO:
                 out += _ANSI_BLUE
             else:
                 out += _ANSI_WHITE
 
-        out += f"{record.levelname:6s}"
+        level_name = record.levelname
+        if level_name == "WARNING":
+            level_name = "WARN"
+        out += f"{level_name:6s}"
 
         if self._color:
             out += _ANSI_RESET
