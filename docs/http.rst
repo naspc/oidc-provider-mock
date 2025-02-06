@@ -1,13 +1,16 @@
 HTTP Endpoints
 ==============
 
+.. _http_get_authorize:
+
 ``GET /oauth2/authorize``
 -------------------------
 
 
-OpenID Connect `authorization endpoint`_. On a ``GET``, show an authentication
-form to the user. Submitting the form will redirect to the relying party that
-requested the authentication.
+OpenID Connect `authorization endpoint`_ that shows the authorization form to
+the use. A relying party will redirect a user to this URL to authenticate them.
+Submitting the form will redirect to the relying party that requested the
+authentication.
 
 Query parameters:
 
@@ -22,6 +25,22 @@ Query parameters:
   Currently, only ``code`` is supported.
 
 .. _authorization endpoint: https://openid.net/specs/openid-connect-core-1_0.html#AuthorizationEndpoint
+
+``PUT /oauth2/authorize``
+-------------------------
+
+Endpoint for submitting authorization by the user. Redirects to ``redirect_uri``
+with an authorization code or an error in the query.  Requires the same query
+parameters as `http_get_authorize`.
+
+Form parameters:
+
+``sub`` (required unless ``action`` is ``deny``)
+  The subject (or user identifier) to issue the authorization code for.
+
+``action``
+  If value is ``deny`` the user agent will be redirected to the client with an
+  indication that the user denied the authorization.
 
 
 .. _http_put_users:

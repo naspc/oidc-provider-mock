@@ -26,7 +26,7 @@ def run_server_in_thread(
 
     The server is stopped when the context ends.
 
-    See `oidc_provider_mock.app` for documentation of parameters.
+    See `app <oidc_provider_mock.app>` for documentation of parameters.
 
     >>> with run_server_in_thread(port=35432) as server:
     ...     print(f"Server listening at http://localhost:{server.server_port}")

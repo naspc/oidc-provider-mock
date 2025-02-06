@@ -290,11 +290,11 @@ def app(
     issue_refresh_token: bool = True,
     access_token_max_age: timedelta = timedelta(hours=1),
 ) -> flask.Flask:
-    """Create a flask app for the OpenID provider.
+    """Create a Flask app running the OpenID provider.
 
     Call ``app().run()`` (see `flask.Flask.run`) to start the server.
 
-    See ``init_app`` for documentaiton of parameters
+    See ``init_app`` for documentation of parameters
     """
     app = flask.Flask(__name__)
 
@@ -306,6 +306,7 @@ def app(
         access_token_max_age=access_token_max_age,
     )
     if isinstance(app.json, flask.json.provider.DefaultJSONProvider):
+        # Make it easier to debug responses
         app.json.compact = False
     return app
 
@@ -318,7 +319,7 @@ def init_app(
     issue_refresh_token: bool = True,
     access_token_max_age: timedelta = timedelta(hours=1),
 ):
-    """Add the OpenID provider and its endpoints to the app
+    """Add the OpenID provider and its endpoints to the flask ``app``.
 
     :param require_client_registration: If false (the default) any client ID and
         secret can be used to authenticate with the token endpoint. If true,

@@ -13,7 +13,8 @@ You can find the full documentation [here][docs].
 
 ## Usage
 
-The simplest method to run the server is [`pipx`][pipx]
+The simplest method to run the server is
+[`pipx`](https://pipx.pypa.io/latest/installation/):
 
 ```bash
 $ pipx run oidc-provider-mock
@@ -90,8 +91,6 @@ def test_auth_code_login_playwright(live_server, page, oidc_server):
 
 You can find a full example at
 [`examples/flask_oidc_example.py`](examples/flask_oidc_example.py), too.
-
-[pipx]: https://pipx.pypa.io/latest/installation/
 
 ## Alternatives
 

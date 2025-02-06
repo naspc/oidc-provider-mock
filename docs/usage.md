@@ -1,9 +1,32 @@
 # Usage
 
+## Running the server
+
+You can start the server using [`pipx`](https://pipx.pypa.io/latest/installation/):
+
+```bash
+pipx run oidc-provider-mock
+```
+
+You can also run the server programatically through the [Python API](project:#api).
+
+## Client configuration
+
+To use the mock provider, configure your OIDC client’s provider URL
+(`http://localhost:9400` by default).
+
+If your client library does not support discovery you will need to configure
+the endpoint URLs individually. You can look up all endpoints at
+<http://localhost:9400/.well-known/openid-configuration>.
+
+You can use any client ID, client secret or redirect URI with the provider by
+default. (See <project:#client-registration> for advanced usage)
+
 ## Authorization form
 
-When the user is redirected to the authorization endpoint by the OIDC client
-they see the authorization form:
+When a user needs to authenticate with the OIDC client the client redirects them
+to the authorization endpoint of the provider. The authorization endpoint shows
+the user the authorization form.
 
 <div class="app-frame mac wireframe" style="margin: 2.5rem 2rem">
 <img src="_static/auth-form.webp" alt="Authorization form">
@@ -12,6 +35,12 @@ they see the authorization form:
 The “sub” input is the user identifier (“subject”) that is included in the ID
 token claims and user info response. By default, the value is also used for the
 `email` claim. (See also <project:#user-claims>)
+
+When the user clicks “Authorize” they are redirected to the client application
+and the app can obtain the OpenID token with information about the user.
+
+When the user clicks “Deny” they are redirected to the client application with
+an error that the app needs to handle.
 
 ## Client registration
 
