@@ -394,7 +394,7 @@ def jwks():
 class RegisterClientBody(pydantic.BaseModel):
     redirect_uris: Sequence[pydantic.HttpUrl]
     token_endpoint_auth_method: ClientAuthMethod = "client_secret_basic"
-    # TODO: support scopes
+    scope: str | None = None
 
 
 @blueprint.post("/oauth2/clients")
@@ -405,7 +405,7 @@ def register_client():
         id=str(uuid4()),
         secret=secrets.token_urlsafe(16),
         redirect_uris=[str(uri) for uri in body.redirect_uris],
-        allowed_scopes=Client.SCOPES_SUPPORTED,
+        allowed_scopes=body.scope or Client.SCOPES_SUPPORTED,
         token_endpoint_auth_method=body.token_endpoint_auth_method,
     )
 

@@ -10,10 +10,15 @@ from authlib.integrations.httpx_client import OAuth2Client
 
 @dataclass(kw_only=True, frozen=True)
 class TokenData:
+    """Payload of a successful access token response.
+
+    See https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1"""
+
     access_token: str
     expires_in: int
     refresh_token: str | None
     claims: dict[str, object]
+    scope: str | None
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -204,6 +209,7 @@ class OidcClient:
             expires_in=response.expires_in,
             claims=token.claims,
             refresh_token=response.refresh_token,
+            scope=response.scope,
         )
 
     def fetch_userinfo(self, token: str):
@@ -283,3 +289,4 @@ class _TokenResponse(pydantic.BaseModel):
     expires_in: int
     refresh_token: str | None = None
     id_token: str | None = None
+    scope: str | None = None

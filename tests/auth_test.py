@@ -61,7 +61,7 @@ def test_custom_claims(oidc_server: str):
         json={"custom": "CLAIM"},
     ).raise_for_status()
 
-    client = fake_client(issuer=oidc_server)
+    client = _fake_client(issuer=oidc_server)
 
     token_data = httpx.post(
         client.authorization_url(state=state),
@@ -96,7 +96,7 @@ def test_include_all_claims(oidc_server: str):
 
     httpx.put(f"{oidc_server}/users/{subject}", json=claims).raise_for_status()
 
-    client = fake_client(
+    client = _fake_client(
         issuer=oidc_server,
         scope="openid profile email address phone",
     )
@@ -113,6 +113,7 @@ def test_include_all_claims(oidc_server: str):
     assert token_data.claims["email"] == claims["email"]
     assert token_data.claims["address"]["formatted"] == claims["address"]["formatted"]  # type: ignore
     assert token_data.claims["phone"] == claims["phone"]
+    assert token_data.scope == "openid profile email address phone"
 
     user_info = client.fetch_userinfo(token=token_data.access_token)
     assert user_info["sub"] == subject
@@ -126,7 +127,7 @@ def test_include_all_claims(oidc_server: str):
 def test_auth_denied(oidc_server: str):
     state = faker.password()
 
-    client = fake_client(oidc_server)
+    client = _fake_client(oidc_server)
 
     response = httpx.post(
         client.authorization_url(state=faker.password()),
@@ -141,7 +142,7 @@ def test_auth_denied(oidc_server: str):
 def test_client_not_registered(oidc_server: str):
     state = faker.password()
 
-    client = fake_client(oidc_server)
+    client = _fake_client(oidc_server)
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -189,7 +190,7 @@ def test_client_auth_methods(oidc_server: str, auth_method: str):
     subject = faker.email()
     state = faker.password()
 
-    client = fake_client(oidc_server, auth_method=auth_method)
+    client = _fake_client(oidc_server, auth_method=auth_method)
     auth_url = client.authorization_url(state=state)
     response = httpx.post(auth_url, data={"sub": subject})
 
@@ -224,7 +225,7 @@ def test_auth_methods_not_supported_for_client(oidc_server: str):
 def test_nonce_required_error(oidc_server: str):
     state = faker.password()
 
-    client = fake_client(oidc_server)
+    client = _fake_client(oidc_server)
     auth_url = client.authorization_url(state=state)
     token_data = httpx.post(auth_url, data={"sub": faker.email()})
     with pytest.raises(
@@ -243,7 +244,7 @@ def test_nonce_required_error(oidc_server: str):
 def test_no_openid_scope(oidc_server: str):
     state = faker.password()
 
-    client = fake_client(oidc_server, scope="foo bar")
+    client = _fake_client(oidc_server, scope="foo bar")
 
     response = httpx.post(
         client.authorization_url(state=state),
@@ -271,7 +272,26 @@ def test_no_email_scope(oidc_server: str):
     )
 
     token_data = client.fetch_token(response.headers["location"], state)
+    assert token_data.scope == "openid"
     assert "email" not in token_data.claims
+
+
+def test_reduced_authorization_scope(oidc_server: str):
+    state = faker.password()
+
+    client = OidcClient.register(
+        oidc_server,
+        scope="openid other",
+        redirect_uri=faker.uri(schemes=["https"]),
+    )
+
+    response = httpx.post(
+        client.authorization_url(state=state, scope="openid other notallowed"),
+        data={"sub": faker.email()},
+    )
+
+    token_data = client.fetch_token(response.headers["location"], state)
+    assert token_data.scope == "openid other"
 
 
 @use_provider_config(access_token_max_age=timedelta(minutes=111))
@@ -330,7 +350,7 @@ def test_refresh_token(oidc_server: str):
     client.fetch_userinfo(token=refresh_token_data.access_token)
 
 
-def fake_client(
+def _fake_client(
     issuer: str,
     *,
     scope: str = OidcClient.DEFAULT_SCOPE,
