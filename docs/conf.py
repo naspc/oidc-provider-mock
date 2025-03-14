@@ -6,6 +6,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import docutils.nodes
 import sphinx.addnodes
@@ -74,7 +75,7 @@ class GithubSourceDomain(Domain):
         target: str,
         node: sphinx.addnodes.pending_xref,
         contnode: docutils.nodes.Element,
-    ) -> list[tuple[str, docutils.nodes.Element]]:
+    ) -> list[tuple[str, Any]]:
         if not Path(__file__).parent.parent.joinpath(target).exists():
             return []
 
