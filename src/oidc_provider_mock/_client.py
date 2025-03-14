@@ -22,7 +22,6 @@ _SESSION_KEY_OIDC_CLAIMS = "oidc_id_token_claims"
 
 @blueprint.get("/oidc/login")
 def login():
-    client = _get_client()
     state = secrets.token_urlsafe(16)
     nonce = secrets.token_urlsafe(16)
     flask.session[_SESSION_KEY_STATE] = state
