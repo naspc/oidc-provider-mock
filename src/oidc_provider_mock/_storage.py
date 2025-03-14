@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Literal, TypeAlias, cast
+from typing import ClassVar, Literal, TypeAlias, cast
 
 import authlib.oauth2.rfc6749
 import authlib.oidc.core
@@ -30,9 +30,18 @@ class Client(authlib.oauth2.rfc6749.ClientMixin):
 
     """Wrap ``Client`` to implement authlib’s client protocol."""
 
-    RESPONSE_TYPES_SUPPORTED = ["code"]
-    GRANT_TYPES_SUPPORTED = ["authorization_code", "refresh_token"]
-    SCOPES_SUPPORTED = ["openid", "profile", "email", "address", "phone"]
+    RESPONSE_TYPES_SUPPORTED: ClassVar[tuple[str, ...]] = ("code",)
+    GRANT_TYPES_SUPPORTED: ClassVar[tuple[str, ...]] = (
+        "authorization_code",
+        "refresh_token",
+    )
+    SCOPES_SUPPORTED: ClassVar[tuple[str, ...]] = (
+        "openid",
+        "profile",
+        "email",
+        "address",
+        "phone",
+    )
 
     @override
     def get_client_id(self):
