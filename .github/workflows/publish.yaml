@@ -16,7 +16,7 @@ jobs:
       - build
     environment:
       name: pypi
-      url: https://test.pypi.org/p/oidc-provider-mock
+      url: https://pypi.org/p/oidc-provider-mock
     runs-on: ubuntu-latest
     permissions:
       id-token: write
