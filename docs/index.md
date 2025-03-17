@@ -2,12 +2,13 @@
 :maxdepth: 1
 :hidden:
 
-Readme <readme.md>
+Readme <./README.md>
 usage
 api.rst
 http.rst
+Contributing <./CONTRIBUTING.md>
 ```
 
-```{include} readme.md
+```{include} README.md
 
 ```
