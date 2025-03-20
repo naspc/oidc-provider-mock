@@ -40,6 +40,7 @@ To prepare a release:
 1. Check out the main branch: `git fetch && git checkout main`
 1. Set the desired version in `./pyproject.toml`
 1. Run `uv lock`
+1. Update `CHANGELOG.md`
 1. Commit the changes with the message `release: vX.Y.Z`
 1. Tag the commit with `vX.Y.Z` and push the tag: `git tag vX.Y.Z && git push
 origin tag vX.Y.Z`
