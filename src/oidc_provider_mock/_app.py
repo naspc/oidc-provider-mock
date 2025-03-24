@@ -532,7 +532,7 @@ class _AuthorizationValidationException(werkzeug.exceptions.HTTPException):
         self.code = HTTPStatus.BAD_REQUEST
 
 
-@blueprint.route("/oauth2/token", methods=["POST"])
+@blueprint.post("/oauth2/token")
 def issue_token() -> flask.typing.ResponseReturnValue:
     request = FlaskOAuth2Request(flask.request)
     try:

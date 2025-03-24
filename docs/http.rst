@@ -26,8 +26,8 @@ Query parameters:
 
 .. _authorization endpoint: https://openid.net/specs/openid-connect-core-1_0.html#AuthorizationEndpoint
 
-``PUT /oauth2/authorize``
--------------------------
+``POST /oauth2/authorize``
+--------------------------
 
 Endpoint for submitting authorization by the user. Redirects to ``redirect_uri``
 with an authorization code or an error in the query.  Requires the same query
@@ -46,7 +46,7 @@ Form parameters:
 .. _http_put_users:
 
 ``PUT /users/{sub}``
-----------------------
+--------------------
 
 Set user information to be included in the ID token and the userinfo endpoint.
 
