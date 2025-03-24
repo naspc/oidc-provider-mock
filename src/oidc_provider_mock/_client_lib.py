@@ -1,4 +1,6 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urljoin, urlparse
 
 import httpx
@@ -29,6 +31,27 @@ class RefreshTokenData:
     claims: dict[str, object] | None
 
 
+class _OidcClaims(pydantic.BaseModel):
+    """Claims defined for the OpenID JWT.
+
+    See https://openid.net/specs/openid-connect-core-1_0.html#IDToken"""
+
+    iss: str
+    aud: str | Sequence[str]
+    azp: str | None = None
+    exp: int
+    iat: int
+
+
+class InvalidClaim(Exception):
+    # Name of the invalid claim, e.g. iss, aud, etc.
+    name: str
+
+    def __init__(self, name: str, message: str) -> None:
+        self.name = name
+        super().__init__(message)
+
+
 class OidcClient:
     DEFAULT_SCOPE = "openid email"
     DEFAULT_AUTH_METHOD = "client_secret_basic"
@@ -41,16 +64,17 @@ class OidcClient:
         id: str,
         redirect_uri: str,
         secret: str,
-        provider_url: str,
+        issuer: str,
         auth_method: str = DEFAULT_AUTH_METHOD,
         scope: str = DEFAULT_SCOPE,
     ) -> None:
         self._id = id
         self._secret = secret
         self._scope = scope
+        self._issuer = issuer
 
         # TODO: validate response
-        config = self.get_authorization_server_metadata(provider_url)
+        config = self.get_authorization_server_metadata(issuer)
 
         self._jwks = joserfc.jwk.KeySet.import_key_set(
             httpx.get(config["jwks_uri"]).json()
@@ -85,14 +109,14 @@ class OidcClient:
     @classmethod
     def register(
         cls,
-        provider_url: str,
+        issuer: str,
         redirect_uri: str,
         scope: str = DEFAULT_SCOPE,
         auth_method: str = "client_secret_basic",
     ):
         """Register a client with the OpenID provider and instantiate it."""
 
-        config = cls.get_authorization_server_metadata(provider_url)
+        config = cls.get_authorization_server_metadata(issuer)
 
         # TODO: handle
         if endpoint := config.get("registration_endpoint"):
@@ -119,7 +143,7 @@ class OidcClient:
             id=content["client_id"],
             redirect_uri=redirect_uri,
             scope=scope,
-            provider_url=provider_url,
+            issuer=issuer,
             secret=content["client_secret"],
         )
 
@@ -201,13 +225,12 @@ class OidcClient:
                 "missing id_token from token endpoint response"
             )
 
-        # FIXME: check claims!!
-        token = joserfc.jwt.decode(response.id_token, self._jwks)
+        claims = self._decode_and_verify_id_token(response.id_token)
 
         return TokenData(
             access_token=response.access_token,
             expires_in=response.expires_in,
-            claims=token.claims,
+            claims=claims,
             refresh_token=response.refresh_token,
             scope=response.scope,
         )
@@ -236,8 +259,7 @@ class OidcClient:
             raise AuthorizationServerError("invalid token endpoint response") from e
 
         if response.id_token:
-            # FIXME: check claims!!
-            claims = joserfc.jwt.decode(response.id_token, self._jwks).claims
+            claims = self._decode_and_verify_id_token(response.id_token)
         else:
             claims = None
 
@@ -247,6 +269,59 @@ class OidcClient:
             claims=claims,
             refresh_token=response.refresh_token,
         )
+
+    def _decode_and_verify_id_token(self, id_token: str) -> dict[str, object]:
+        # See https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+
+        # 1. decode and verify signature
+        token = joserfc.jwt.decode(id_token, self._jwks)
+        # TODO: wrap error
+        claims = _OidcClaims.model_validate(token.claims)
+
+        # 2. iss
+        if claims.iss != self._issuer:
+            raise InvalidClaim("iss", f"expected {self._issuer} got {claims.iss}")
+
+        # 3. aud
+        if isinstance(claims.aud, str):
+            if claims.aud != self._id:
+                raise InvalidClaim("aud", f"expected {self._id} got {claims.aud}")
+        else:
+            aud = set(claims.aud)
+            if self._id not in aud:
+                raise InvalidClaim("aud", f"client ID {self._id} not included")
+            untrusted = aud - {self._id}
+            if untrusted:
+                raise InvalidClaim(
+                    "aud", f"includes untrusted audiences {', '.join(untrusted)}"
+                )
+
+        # 4. azp extension not implemented
+
+        # 5. azp
+        if claims.azp is not None and claims.azp != self._id:
+            raise InvalidClaim("azp", f"expected {self._id} got {claims.azp}")
+
+        # 6. TLS verification skipped, we’re using the signature
+        # TODO: 7. Implement alg check
+        # TODO: 8. Client secret check of HMAC
+
+        now = datetime.now(tz=timezone.utc)
+
+        # 9. exp
+        exp = datetime.fromtimestamp(claims.exp, tz=timezone.utc)
+        if now > exp + timedelta(seconds=5):
+            raise ValueError("exp")
+
+        # 10. iat
+        iat = datetime.fromtimestamp(claims.iat, tz=timezone.utc)
+        if now < iat - timedelta(hours=1):
+            raise ValueError("iat")
+
+        # 11. TODO nonce
+        # 12. acr extension not implemented
+
+        return token.claims
 
 
 class AuthorizationServerError(Exception):

@@ -164,7 +164,7 @@ def test_wrong_client_secret(oidc_server: str):
 
     # Create a second client with the same ID but different secret
     client = OidcClient(
-        provider_url=oidc_server,
+        issuer=oidc_server,
         id=client.id,
         secret="foobar",
         redirect_uri=redirect_uri,
@@ -213,7 +213,7 @@ def test_auth_methods_not_supported_for_client(oidc_server: str):
         redirect_uri=redirect_uri,
         auth_method="client_secret_post",
         secret=client.secret,
-        provider_url=oidc_server,
+        issuer=oidc_server,
     )
     auth_url = client.authorization_url(state=state)
     response = httpx.post(auth_url, data={"sub": faker.email()})
@@ -360,7 +360,7 @@ def _fake_client(
         id=str(faker.uuid4()),
         secret=faker.password(),
         redirect_uri=faker.uri(schemes=["https"]),
-        provider_url=issuer,
+        issuer=issuer,
         scope=scope,
         auth_method=auth_method,
     )
