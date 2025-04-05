@@ -22,7 +22,7 @@ def test_userinfo_unauthorized(client: flask.testing.FlaskClient):
     assert response.json == {"error": "unsupported_token_type"}
 
     response = client.get("/userinfo", headers={"authorization": "Bearer foo"})
-    # TODO: should be unauthorized
+    # Should be `HTTPStatus.UNAUTHORIZED` but there is a bug in authlib
     assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json
     assert response.json["error"] == "access_denied"
