@@ -482,9 +482,7 @@ def _validate_auth_request_client_params(
     try:
         grant = authorization.get_consent_grant()  # type: ignore
         assert isinstance(grant, AuthorizationCodeGrant)
-        assert isinstance(grant, authlib.oauth2.rfc6749.AuthorizationEndpointMixin)
         redirect_uri = grant.validate_authorization_request()
-        assert isinstance(redirect_uri, str)
     except authlib.oauth2.rfc6749.InvalidClientError as e:
         raise _AuthorizationValidationException(
             authlib.oauth2.rfc6749.InvalidClientError.error,
