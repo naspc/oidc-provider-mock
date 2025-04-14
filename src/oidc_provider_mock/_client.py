@@ -83,7 +83,7 @@ def success():
 
 def _get_client() -> OidcClient:
     return OidcClient(
-        id="my-client-id",
+        id="my-client-idasdlfkjasldkfjalskdjflaskjdflasjkdflaskjdflaksjdflajsdlfkjalsdfkjalskdjf",
         secret="my-client-secret",
         redirect_uri=_url_for(authorized, _external=True),
         issuer=flask.request.root_url,
