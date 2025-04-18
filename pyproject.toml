@@ -97,6 +97,9 @@ filterwarnings = [
   "ignore:Cannot resolve forward reference 'Response':typeguard.TypeHintWarning",
   "ignore:datetime.datetime.utcnow:DeprecationWarning",
 ]
+markers = [
+  "provider_config", # Configure provider with certain options
+]
 typeguard-debug-instrumentation = true
 typeguard-forward-ref-policy = "WARN"
 typeguard-collection-check-strategy = "ALL_ITEMS"

@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TypeVar
+from typing import Any, TypeVar, cast
 
 import flask
 import pytest
@@ -22,9 +22,11 @@ from oidc_provider_mock._app import Config  # noqa: E402
 
 @pytest.fixture
 def app(request: pytest.FixtureRequest):
-    param = getattr(request, "param", None)
-    if param:
-        app = oidc_provider_mock.app(**dataclasses.asdict(param))
+    node = cast("Any", request.node)  # pyright: ignore
+    marker = node.get_closest_marker("provider_config")
+    if marker:
+        config = marker.args[0]
+        app = oidc_provider_mock.app(**dataclasses.asdict(config))
     else:
         app = oidc_provider_mock.app()
 
@@ -46,18 +48,13 @@ def use_provider_config(
 ) -> Callable[[_C], _C]:
     """Set configuration for the app under test."""
 
-    return pytest.mark.parametrize(
-        "app",
-        [
-            Config(
-                require_client_registration=require_client_registration,
-                require_nonce=require_nonce,
-                issue_refresh_token=issue_refresh_token,
-                access_token_max_age=access_token_max_age,
-            ),
-        ],
-        indirect=True,
-        ids=[""],
+    return pytest.mark.provider_config(
+        Config(
+            require_client_registration=require_client_registration,
+            require_nonce=require_nonce,
+            issue_refresh_token=issue_refresh_token,
+            access_token_max_age=access_token_max_age,
+        ),
     )
 
 
