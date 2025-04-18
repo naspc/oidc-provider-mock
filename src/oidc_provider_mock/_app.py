@@ -115,7 +115,7 @@ class RefreshTokenGrant(authlib.oauth2.rfc6749.RefreshTokenGrant):
     def authenticate_refresh_token(self, refresh_token: str):
         token = storage.get_refresh_token(refresh_token)
         if not token:
-            raise authlib.oauth2.rfc6749.AccessDeniedError()
+            raise authlib.oauth2.rfc6749.InvalidGrantError("invalid refresh token")
 
         return token
 

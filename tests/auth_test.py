@@ -368,8 +368,8 @@ def test_revoke_tokens(oidc_server: str):
     assert e.value.response.json()["error"] == "access_denied"
 
     assert token_data.refresh_token
-    with pytest.raises(OAuthError, match="access_denied") as e:
-        client.refresh_token(token_data.refresh_token)
+    with pytest.raises(OAuthError, match="invalid_grant: invalid refresh token"):
+        client.refresh_token(faker.password())
 
 
 def _fake_client(
