@@ -342,9 +342,9 @@ def test_refresh_token(oidc_server: str):
     assert token_data.refresh_token is not None
     refresh_token_data = client.refresh_token(refresh_token=token_data.refresh_token)
 
+    # Using a refresh token revokes the old access token
     with pytest.raises(httpx.HTTPStatusError) as e:
         client.fetch_userinfo(token=token_data.access_token)
-
     assert e.value.response.json()["error"] == "access_denied"
 
     client.fetch_userinfo(token=refresh_token_data.access_token)
