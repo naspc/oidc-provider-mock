@@ -14,6 +14,9 @@ from typing_extensions import override
 class ClientAllowAny:
     """Special value for client fields that skips validation of the field."""
 
+    def __repr__(self) -> str:
+        return str(type(self).__name__)
+
 
 ClientAuthMethod: TypeAlias = (
     Literal["none"] | Literal["client_secret_basic"] | Literal["client_secret_post"]
