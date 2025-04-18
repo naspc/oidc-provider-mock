@@ -23,7 +23,6 @@ class TokenData:
     scope: str | None
 
 
-# TODO: Use TokenData instead
 @dataclass(kw_only=True, frozen=True)
 class RefreshTokenData:
     access_token: str
