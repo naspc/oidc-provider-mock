@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## v0.2.3 - 2025-04-18
 
 - Add HTTP endpoint to revoke all tokens for a user.
 
