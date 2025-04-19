@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Suppress exception logging on client errors in token endpoint.
 - Use correct error code "invalid_grant" when refresh token is not valid.
 
 ## v0.2.3 - 2025-04-18

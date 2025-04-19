@@ -544,7 +544,13 @@ def issue_token() -> flask.typing.ResponseReturnValue:
         args = grant.create_token_response()
         return authorization.handle_response(*args)  # type: ignore
     except OAuth2Error as error:
-        _logger.warning("did not issue token", exc_info=error)
+        if error.error:
+            _logger.warning(
+                f"token endpoint error {error.error}",
+                extra={"description": error.description},
+            )
+        else:
+            _logger.warning("error while issuing token", exc_info=error)
         return authorization.handle_error_response(request, error)  # type: ignore
 
 
