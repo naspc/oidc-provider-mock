@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## v0.2.5 - 2025-05-27
 
 - Suppress deprecation warnings introduced in Authlib v1.6.
 
