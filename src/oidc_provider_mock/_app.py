@@ -429,8 +429,8 @@ def authorize() -> flask.typing.ResponseReturnValue:
     try:
         grant, redirect_uri = _validate_auth_request_client_params(flask.request)
         assert isinstance(grant.client, Client)  # pyright: ignore[reportUnknownMemberType]
-    except _AuthorizationValidationException:
-        _logger.warning("invalid authorization request", exc_info=True)
+    except _AuthorizationValidationException as exc:
+        _logger.warning(f"invalid authorization request: {exc.description}")
         raise
 
     if flask.request.method == "GET":
@@ -524,9 +524,13 @@ def _validate_auth_request_client_params(
 
 
 class _AuthorizationValidationException(werkzeug.exceptions.HTTPException):
-    def __init__(self, name: str, description: str):
+    error: str
+
+    def __init__(self, error: str, description: str):
+        self.error = error
+        self.description = description
         response = flask.make_response(
-            flask.render_template("error.html", name=name, description=description),
+            flask.render_template("error.html", name=error, description=description),
             HTTPStatus.BAD_REQUEST,
         )
         super().__init__(response=response)
@@ -539,7 +543,10 @@ def issue_token() -> flask.typing.ResponseReturnValue:
     try:
         grant = authorization.get_token_grant(request)
     except authlib.oauth2.rfc6749.UnsupportedGrantTypeError as error:
-        _logger.warning("unsupported grant type when issuing token", exc_info=error)
+        _logger.warning(
+            "unsupported grant type for issuing token",
+            extra={"grant_type": error.grant_type},
+        )
         return authorization.handle_error_response(request, error)  # type: ignore
 
     assert isinstance(grant, AuthorizationCodeGrant | RefreshTokenGrant)

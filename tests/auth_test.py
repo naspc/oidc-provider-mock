@@ -7,6 +7,7 @@ from datetime import timedelta
 from http import HTTPStatus
 from typing import Any
 
+import flask.testing
 import httpx
 import pytest
 from authlib.integrations.base_client import OAuthError
@@ -373,6 +374,11 @@ def test_revoke_tokens(oidc_server: str):
     assert token_data.refresh_token
     with pytest.raises(OAuthError, match="invalid_grant: invalid refresh token"):
         client.refresh_token(faker.password())
+
+
+def test_isssue_invalid_grant_type(client: flask.testing.FlaskClient):
+    response = client.post("/oauth2/token", data={"grant_type": "foo"})
+    assert response.json == {"error": "unsupported_grant_type"}
 
 
 def _fake_client(
