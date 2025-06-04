@@ -1,5 +1,5 @@
 """Tests authentication flow only using the POST requests to the authorization
-endopint.
+endpoint.
 """
 
 import re
