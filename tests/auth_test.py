@@ -12,6 +12,7 @@ import httpx
 import pytest
 from authlib.integrations.base_client import OAuthError
 from faker import Faker
+from freezegun import freeze_time
 
 from oidc_provider_mock._client_lib import (
     AuthorizationError,
@@ -379,6 +380,25 @@ def test_revoke_tokens(oidc_server: str):
 def test_isssue_invalid_grant_type(client: flask.testing.FlaskClient):
     response = client.post("/oauth2/token", data={"grant_type": "foo"})
     assert response.json == {"error": "unsupported_grant_type"}
+
+
+@use_provider_config(access_token_max_age=timedelta(minutes=111))
+def test_userinfo_expired_token(oidc_server: str):
+    with freeze_time(faker.date(), tick=True) as frozen_datetime:
+        state = faker.password()
+        client = _fake_client(oidc_server)
+        token_data = httpx.post(
+            client.authorization_url(state=state),
+            data={"sub": faker.email()},
+        )
+
+        token_data = client.fetch_token(token_data.headers["location"], state=state)
+        frozen_datetime.tick(timedelta(minutes=112))
+        with pytest.raises(httpx.HTTPStatusError) as e:
+            client.fetch_userinfo(token=token_data.access_token)
+
+        response = e.value.response.json()
+        assert response["error"] == "invalid_token"
 
 
 def _fake_client(
