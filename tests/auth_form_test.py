@@ -28,8 +28,7 @@ def test_invalid_client(client: flask.testing.FlaskClient, method: str):
     response = client.open(f"/oauth2/authorize?{query}", method=method)
     assert response.status_code == 400
     assert "Error: invalid_client" in response.text
-    # TODO improve error message: tell user that is missing
-    assert "Invalid client_id query parameter" in response.text
+    assert "Missing &#39;client_id&#39; parameter" in response.text
 
     query = urlencode({
         "client_id": "UNKNOWN",
@@ -39,8 +38,7 @@ def test_invalid_client(client: flask.testing.FlaskClient, method: str):
     response = client.open(f"/oauth2/authorize?{query}", method=method)
     assert response.status_code == 400
     assert "Error: invalid_client" in response.text
-    # TODO improve error message
-    assert "Invalid client_id query parameter" in response.text
+    assert "The client does not exist on this server" in response.text
 
     redirect_uris = [faker.uri(schemes=["https"])]
     response = client.post(

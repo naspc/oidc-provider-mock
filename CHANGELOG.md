@@ -1,5 +1,10 @@
 # Changes
 
+## Unreleased
+
+- Display more detailed error message when client_id is wrong or missing
+- Don’t log stack traces on client errors
+
 ## v0.2.5 - 2025-05-27
 
 - Suppress deprecation warnings introduced in Authlib v1.6.

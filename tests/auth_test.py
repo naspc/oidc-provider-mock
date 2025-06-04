@@ -152,11 +152,9 @@ def test_client_not_registered(oidc_server: str):
         data={"sub": faker.email()},
     )
 
-    # TODO: Render an HTML error
-    # auth error response redirect.
     assert response.status_code == HTTPStatus.BAD_REQUEST
     assert "Error: invalid_client" in response.text
-    assert "Invalid client_id query parameter" in response.text
+    assert "The client does not exist on this server" in response.text
 
 
 def test_wrong_client_secret(oidc_server: str):

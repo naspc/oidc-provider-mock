@@ -491,7 +491,7 @@ def _validate_auth_request_client_params(
     except authlib.oauth2.rfc6749.InvalidClientError as e:
         raise _AuthorizationValidationException(
             authlib.oauth2.rfc6749.InvalidClientError.error,
-            "Invalid client_id query parameter",
+            e.description,
         ) from e
     except authlib.oauth2.rfc6749.UnsupportedResponseTypeError as e:
         raise _AuthorizationValidationException(
