@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Drop support for Authlib v1.4
 - Display more detailed error message when client_id is wrong or missing
 - Don’t log stack traces on client errors
 
