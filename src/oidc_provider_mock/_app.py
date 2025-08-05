@@ -429,10 +429,7 @@ def start_jwks_refresh_task():
                     "max_age": max_age
                 })
                 
-                # 5. Update OAuth client metadata
-                # Replace with actual client update logic
-                # oauth_client.metadata.jwks = jwks_response
-                # oauth_client.metadata.jwks_expiration = expiration
+             
                 
                 # 6. Sleep until expiration minus padding
                 sleep_duration = max_age - 120  # Pad by 2 minutes
