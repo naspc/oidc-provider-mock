@@ -1,7 +1,8 @@
 # Changes
 
-## Unreleased
+## v0.2.6 - 2025-08-01
 
+- Add `--host` option to CLI
 - Drop support for Authlib v1.4
 - Display more detailed error message when client_id is wrong or missing
 - Don’t log stack traces on client errors
