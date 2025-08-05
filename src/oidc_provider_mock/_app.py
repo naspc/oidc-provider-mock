@@ -386,13 +386,18 @@ def openid_config():
         "id_token_signing_alg_values_supported": [_JWS_ALG],
     })
 
-
 @blueprint.get("/jwks")
 def jwks():
-    return flask.jsonify(
-        jose.KeySet((storage.jwk,)).as_dict(),  # pyright: ignore[reportUnknownMemberType]
-    )
-
+    """JWKS endpoint with cache headers"""
+    keyset = jose.KeySet((storage.jwk,)).as_dict()  # pyright: ignore[reportUnknownMemberType]
+    
+    response = flask.jsonify(keyset)
+    
+    # Set cache headers (24 hours)
+    response.headers['Cache-Control'] = 'public, max-age=86400'  # 86400 seconds = 24 hours
+    response.headers['Expires'] = (datetime.utcnow() + timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+    
+    return response
 
 class RegisterClientBody(pydantic.BaseModel):
     redirect_uris: Sequence[pydantic.HttpUrl]
