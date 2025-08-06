@@ -9,6 +9,7 @@ from http import HTTPStatus
 from typing import TypeVar, cast
 from uuid import uuid4
 
+
 import authlib.deprecate
 import authlib.integrations.flask_oauth2 as flask_oauth2
 import authlib.oauth2.rfc6749
@@ -359,6 +360,71 @@ def init_app(
 
     return app
 
+# Global cache state for JWKS
+jwks_cache = {
+    "keyset": None,
+    "expiration": None,
+    "max_age": 86400,  # Default 24 hours
+    "port": 9400       # Default port
+}
+
+def start_jwks_refresh_task():
+    """Start background task to refresh JWKS according to cache headers"""
+    def refresh_loop():
+        while True:
+            try:
+                # 1. Record the timestamp
+                start_time = datetime.utcnow()
+                
+                # 2. Request the JWKS key
+                port = jwks_cache['port']
+                jwks_uri = f"http://localhost:{port}/jwks"
+                response = requests.get(jwks_uri)
+                response.raise_for_status()
+                
+                # Parse the JWKS
+                jwks = JsonWebKeySet()
+                jwks.import_key_set(response.json())
+                
+                # 3. Set expiration time from cache-control
+                cache_control = response.headers.get('Cache-Control', '')
+                max_age = jwks_cache['max_age']  # Default to existing
+                
+                if 'max-age' in cache_control:
+                    try:
+                        max_age = int(cache_control.split('max-age=')[1].split(',')[0])
+                    except (ValueError, IndexError):
+                        pass  # Keep existing max_age
+                
+                # 3. Calculate expiration time
+                expiration = start_time + timedelta(seconds=max_age)
+                
+                # Update cache
+                jwks_cache.update({
+                    "keyset": jwks,
+                    "expiration": expiration,
+                    "max_age": max_age,
+                    "last_updated": start_time
+                })
+                
+                # 4. Update OAuth client (pseudo-code)
+                # This would depend on your actual OAuth client implementation
+                # update_oauth_client_jwks(jwks)
+                
+                # 5. Calculate sleep time with padding
+                sleep_time = max(max_age - 120, 10)  # Min 10 seconds
+                time.sleep(sleep_time)
+                
+            except Exception as e:
+                print(f"JWKS refresh failed: {e}")
+                traceback.print_exc()
+                # Retry after shorter interval on error
+                time.sleep(60)
+                
+    # Start the background thread
+    thread = threading.Thread(target=refresh_loop, daemon=True)
+    thread.start()
+    print(f"Started JWKS refresh task (Thread ID: {thread.ident})")
 
 @blueprint.get("/")
 def home():
@@ -389,21 +455,26 @@ def openid_config():
 @blueprint.get("/jwks")
 def jwks():
     """JWKS endpoint with cache headers"""
+    print("\n=== JWKS Endpoint Called ===")
+    print(f"Current time: {datetime.utcnow().isoformat()}")
+    
     keyset = jose.KeySet((storage.jwk,)).as_dict()  # pyright: ignore[reportUnknownMemberType]
+    print("Generated keyset with kid:", keyset.get('keys', [{}])[0].get('kid'))
     
     response = flask.jsonify(keyset)
     
     # Set cache headers (24 hours)
-    response.headers['Cache-Control'] = 'public, max-age=86400'  # 86400 seconds = 24 hours
-    response.headers['Expires'] = (datetime.utcnow() + timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+    cache_max_age = 86400  # 24 hours in seconds
+    response.headers['Cache-Control'] = f'public, max-age={cache_max_age}'
+    expires_time = datetime.utcnow() + timedelta(seconds=cache_max_age)
+    response.headers['Expires'] = expires_time.strftime('%a, %d %b %Y %H:%M:%S GMT')
+    
+    print("Response headers set:")
+    print(f"- Cache-Control: {response.headers['Cache-Control']}")
+    print(f"- Expires: {response.headers['Expires']}")
+    print("=== End of JWKS Call ===\n")
     
     return response
-
-class RegisterClientBody(pydantic.BaseModel):
-    redirect_uris: Sequence[pydantic.HttpUrl]
-    token_endpoint_auth_method: ClientAuthMethod = "client_secret_basic"
-    scope: str | None = None
-
 
 @blueprint.post("/oauth2/clients")
 def register_client():

@@ -1,0 +1,2 @@
+[console_scripts]
+html2htpy = htpy.html2htpy:main

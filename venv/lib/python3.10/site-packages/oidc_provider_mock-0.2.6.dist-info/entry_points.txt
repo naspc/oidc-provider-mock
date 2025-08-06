@@ -1,0 +1,2 @@
+[console_scripts]
+oidc-provider-mock = oidc_provider_mock.__main__:run

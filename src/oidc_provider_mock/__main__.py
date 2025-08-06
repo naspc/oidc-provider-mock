@@ -3,7 +3,9 @@ import os
 import sys
 import time
 import traceback
-from datetime import timedelta
+import threading
+import requests
+from datetime import datetime, timedelta
 
 import click
 import uvicorn
@@ -11,10 +13,84 @@ import uvicorn
 from . import app
 from ._app import Config
 
+# Constants
+JWKS_REFRESH_PADDING = 120  # 2 minutes padding before expiration
 _default_config = Config
 
 
+# Global cache state for JWKS
+jwks_cache = {
+    "keyset": None,
+    "expiration": None,
+    "max_age": 86400,  # Default 24 hours
+    "port": 9400,
+    "host": "127.0.0.1"
+}
+
+def start_jwks_refresh_task(debug: bool = False):
+    """Start background task to refresh JWKS according to cache headers"""
+    def refresh_loop():
+        while True:
+            try:
+                start_time = datetime.utcnow()
+                if debug:
+                    print(f"\n[DEBUG] JWKS Refresh Cycle Started at {start_time.isoformat()}")
+                
+                jwks_uri = f"http://{jwks_cache['host']}:{jwks_cache['port']}/jwks"
+                if debug:
+                    print(f"[DEBUG] Fetching JWKS from: {jwks_uri}")
+                
+                response = requests.get(jwks_uri)
+                response.raise_for_status()
+                
+                # Parse cache headers
+                cache_control = response.headers.get('Cache-Control', '')
+                max_age = jwks_cache['max_age']  # Default to existing
+                
+                if 'max-age' in cache_control:
+                    try:
+                        max_age = int(cache_control.split('max-age=')[1].split(',')[0])
+                    except (ValueError, IndexError):
+                        if debug:
+                            print("[DEBUG] Using default max-age")
+                
+                expiration = start_time + timedelta(seconds=max_age)
+                jwks_cache.update({
+                    "keyset": response.json(),
+                    "expiration": expiration,
+                    "max_age": max_age,
+                    "last_updated": start_time
+                })
+                
+                if debug:
+                    print(f"[DEBUG] Updated JWKS cache. Next refresh at: {expiration.isoformat()}")
+                
+                # Calculate sleep time with padding
+                sleep_time = max(max_age - JWKS_REFRESH_PADDING, 10)  # Minimum 10s
+                if debug:
+                    print(f"[DEBUG] Sleeping for {sleep_time} seconds")
+                time.sleep(sleep_time)
+                
+            except Exception as e:
+                error_msg = f"JWKS refresh failed: {type(e).__name__}: {str(e)}"
+                logging.error(error_msg)
+                if debug:
+                    traceback.print_exc()
+                    print(f"[DEBUG] Retrying in 60 seconds...")
+                time.sleep(60)
+
+    if debug:
+        print("[DEBUG] Starting JWKS refresh background task")
+    thread = threading.Thread(target=refresh_loop, daemon=True, name="JWKS-Refresh")
+    thread.start()
+
 @click.command(context_settings={"max_content_width": 100})
+@click.option(
+    "--debug",
+    help="Enable debug mode with verbose logging",
+    is_flag=True,
+    default=False
+)
 @click.option(
     "-p",
     "--port",
@@ -52,7 +128,7 @@ _default_config = Config
 @click.option(
     "-f",
     "--no-refresh-token",
-    help="Do not issue an refresh token",
+    help="Do not issue a refresh token",
     show_default=True,
     flag_value=True,
     default=not _default_config.issue_refresh_token,
@@ -67,6 +143,7 @@ _default_config = Config
     type=int,
 )
 def run(
+    debug: bool,
     port: int,
     host: str,
     *,
@@ -77,6 +154,10 @@ def run(
 ):
     """Start an OpenID Connect Provider for testing"""
 
+    # Configure logging
+    log_level = logging.DEBUG if debug else logging.INFO
+    logging.getLogger().setLevel(log_level)
+    
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
         Logfmter(
@@ -85,7 +166,19 @@ def run(
         )
     )
     logging.getLogger().addHandler(handler)
-    logging.getLogger().setLevel(logging.INFO)
+
+    # Update cache configuration
+    jwks_cache.update({
+        "port": port,
+        "host": host
+    })
+    
+    # Start refresh task
+    start_jwks_refresh_task(debug=debug)
+
+    if debug:
+        print(f"[DEBUG] Starting server on {host}:{port}")
+        print("[DEBUG] JWKS refresh task running in background")
 
     uvicorn.run(
         app(
@@ -99,42 +192,6 @@ def run(
         host=host,
         log_config=None,
     )
-
-
-_LOG_RECORD_ATTRIBUTES = (
-    "args",
-    "asctime",
-    "created",
-    "exc_info",
-    "exc_text",
-    "filename",
-    "funcName",
-    "levelname",
-    "levelno",
-    "lineno",
-    "message",
-    "module",
-    "msecs",
-    "msg",
-    "name",
-    "pathname",
-    "process",
-    "processName",
-    "relativeCreated",
-    "stack_info",
-    "taskName",
-    "thread",
-    "threadName",
-)
-
-
-_ANSI_RESET = "\033[0m"
-_ANSI_BOLD = "\033[1m"
-_ANSI_RED = "\033[31m"
-_ANSI_YELLOW = "\033[33m"
-_ANSI_BLUE = "\033[34m"
-_ANSI_WHITE = "\033[37m"
-
 
 class Logfmter(logging.Formatter):
     def __init__(self, color: bool):
@@ -228,7 +285,6 @@ class Logfmter(logging.Formatter):
             return f"{_ANSI_BOLD}{key}{_ANSI_RESET}"
         else:
             return key
-
 
 if __name__ == "__main__":
     run()
