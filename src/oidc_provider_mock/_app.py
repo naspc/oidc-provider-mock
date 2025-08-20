@@ -109,6 +109,8 @@ class OpenIDCode(authlib.oidc.core.OpenIDCode):
             "alg": _JWS_ALG,
             "exp": int(self._token_max_mage.total_seconds()),
             "iss": flask.request.host_url.rstrip("/"),
+            "header": {"kid": storage.current_key_id}  # Add kid to header
+
         }
 
     @override
@@ -191,6 +193,8 @@ class Config:
     require_nonce: bool = False
     issue_refresh_token: bool = True
     access_token_max_age: timedelta = timedelta(hours=1)
+    key_rotation_endpoint: bool = False  
+
 
 
 @blueprint.record
@@ -295,6 +299,8 @@ def app(
     require_nonce: bool = False,
     issue_refresh_token: bool = True,
     access_token_max_age: timedelta = timedelta(hours=1),
+    key_rotation_endpoint: bool = False,  # parameter
+
 ) -> flask.Flask:
     """Create a Flask app running the OpenID provider.
 
@@ -310,6 +316,8 @@ def app(
         require_nonce=require_nonce,
         issue_refresh_token=issue_refresh_token,
         access_token_max_age=access_token_max_age,
+        key_rotation_endpoint=key_rotation_endpoint,  # parameter
+
     )
     app.secret_key = secrets.token_bytes(16)
     if isinstance(app.json, flask.json.provider.DefaultJSONProvider):
@@ -325,6 +333,8 @@ def init_app(
     require_nonce: bool = False,
     issue_refresh_token: bool = True,
     access_token_max_age: timedelta = timedelta(hours=1),
+    key_rotation_endpoint: bool = False,  # parameter
+
 ):
     """Add the OpenID provider and its endpoints to the flask ``app``.
 
@@ -349,6 +359,8 @@ def init_app(
             require_nonce=require_nonce,
             issue_refresh_token=issue_refresh_token,
             access_token_max_age=access_token_max_age,
+            key_rotation_endpoint=key_rotation_endpoint,  
+
         ),
     )
 
@@ -452,29 +464,33 @@ def openid_config():
         "id_token_signing_alg_values_supported": [_JWS_ALG],
     })
 
+@blueprint.post("/oauth2/keys/rotate")
+def rotate_keys():
+    new_kid = storage.rotate_key()
+    return flask.jsonify({
+        "message": "Key rotated successfully",
+        "new_kid": new_kid
+    }), HTTPStatus.OK
+
 @blueprint.get("/jwks")
 def jwks():
-    """JWKS endpoint with cache headers"""
-    print("\n=== JWKS Endpoint Called ===")
-    print(f"Current time: {datetime.utcnow().isoformat()}")
+    try:
+        keyset = storage.jwks
+        response = flask.jsonify(keyset)
+        response.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours
+        return response
+    except Exception as e:
+        _logger.exception("Error generating JWKS")
+        return flask.jsonify({
+            "error": "server_error",
+            "error_description": "Could not generate JWKS"
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
     
-    keyset = jose.KeySet((storage.jwk,)).as_dict()  # pyright: ignore[reportUnknownMemberType]
-    print("Generated keyset with kid:", keyset.get('keys', [{}])[0].get('kid'))
-    
-    response = flask.jsonify(keyset)
-    
-    # Set cache headers (24 hours)
-    cache_max_age = 86400  # 24 hours in seconds
-    response.headers['Cache-Control'] = f'public, max-age={cache_max_age}'
-    expires_time = datetime.utcnow() + timedelta(seconds=cache_max_age)
-    response.headers['Expires'] = expires_time.strftime('%a, %d %b %Y %H:%M:%S GMT')
-    
-    print("Response headers set:")
-    print(f"- Cache-Control: {response.headers['Cache-Control']}")
-    print(f"- Expires: {response.headers['Expires']}")
-    print("=== End of JWKS Call ===\n")
-    
-    return response
+
+class RegisterClientBody(pydantic.BaseModel):
+    redirect_uris: list[pydantic.AnyUrl]
+    scope: list[str] | None = None
+    token_endpoint_auth_method: ClientAuthMethod
 
 @blueprint.post("/oauth2/clients")
 def register_client():

@@ -9,6 +9,8 @@ import flask
 import werkzeug.local
 from authlib import jose
 from typing_extensions import override
+from uuid import uuid4
+
 
 
 class ClientAllowAny:
@@ -173,8 +175,6 @@ class RefreshToken(AccessToken):
 
 
 class Storage:
-    jwk: jose.RSAKey
-
     _clients: dict[str, Client]
     _users: dict[str, User]
     _authorization_codes: dict[str, AuthorizationCode]
@@ -183,15 +183,55 @@ class Storage:
     _nonces: set[str]
 
     def __init__(self) -> None:
-        self.jwk = jose.RSAKey.generate_key(is_private=True)  # pyright: ignore[reportUnknownMemberType]
         self._clients = {}
         self._users = {}
         self._authorization_codes = {}
         self._access_tokens = {}
         self._refresh_tokens = {}
         self._nonces = set()
+        self._keys = {}
+        self._current_key_id = self._generate_key()  # Generate initial key
 
-    # User
+    def _generate_key(self, kid: str | None = None) -> str:
+        """Generate a new RSA key pair and store it with a KID."""
+        if kid is None:
+            kid = uuid4().hex
+            
+        # Generate a new key
+        key = jose.RSAKey.generate_key(is_private=True)
+        
+        # Store key with KID
+        self._keys[kid] = key
+        self._current_key_id = kid
+        return kid
+    def rotate_key(self) -> str:
+        """Generate a new key and make it the current key."""
+        return self._generate_key()
+
+    @property
+    def jwk(self) -> jose.RSAKey:
+        """Get current private key."""
+        return self._keys[self._current_key_id]
+    
+    @property
+    def current_key_id(self) -> str:
+        return self._current_key_id
+    
+    @property
+    def jwks(self) -> dict:
+        """Get public keys in JWKS format."""
+        keys = []
+        for kid, key in self._keys.items():
+            # Export public key to JWK format
+            public_key = key.get_public_key()
+            jwk = {
+                "kty": "RSA",
+                "kid": kid,
+                "n": public_key.public_numbers().n,
+                "e": public_key.public_numbers().e,
+            }
+            keys.append(jwk)
+        return {'keys': keys}
 
     def get_user(self, sub: str) -> User | None:
         return self._users.get(sub)
