@@ -482,17 +482,20 @@ def rotate_keys():
 
 @blueprint.get("/jwks")
 def jwks():
+    # endpoint to serve json web key set (jwks)
+    # contains public keys for token signature verification
     try:
-        keyset = storage.jwks
-        response = flask.jsonify(keyset)
-        response.headers['Cache-Control'] = 'public, max-age=86400'
+        keyset = storage.jwks  # get current jwks from storage
+        response = flask.jsonify(keyset)  # create json response with the keys
+        response.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours cache
         return response
     except Exception as e:
-        _logger.exception("Error generating JWKS")
+        _logger.exception("Error generating JWKS")  # log the error for debugging
         return flask.jsonify({
-            "error": "server_error",
-            "error_description": "Could not generate JWKS"
+            "error": "server_error",  # error type
+            "error_description": "Could not generate JWKS"  # error description
         }), HTTPStatus.INTERNAL_SERVER_ERROR
+    
 
 
 class RegisterClientBody(pydantic.BaseModel):
@@ -500,7 +503,7 @@ class RegisterClientBody(pydantic.BaseModel):
     scope: list[str] | None = None
     token_endpoint_auth_method: ClientAuthMethod
 
-@blueprint.route("/oauth2/clients", methods=["POST", "GET"])  # Add GET method
+@blueprint.route("/oauth2/clients")
 def register_client():
     if flask.request.method == "GET":
         # Return client registration info or form
@@ -583,12 +586,6 @@ def _validate_auth_request_client_params(
     Raises ``_AuthorizationValidationException`` if validation fails which results
     in an appropriate 400 response.
     """
-    # safety check for request method
-    if flask_request.method not in ["GET", "POST"]:
-        raise _AuthorizationValidationException(
-            "invalid_request", 
-            "Unsupported HTTP method for authorization endpoint"
-        )
     
     request = FlaskOAuth2Request(flask_request)
 
