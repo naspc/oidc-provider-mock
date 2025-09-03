@@ -25,6 +25,10 @@ from authlib import jose
 from authlib.integrations.flask_oauth2.authorization_server import FlaskOAuth2Request
 from authlib.oauth2 import OAuth2Error, OAuth2Request
 from typing_extensions import override
+import threading
+import time
+import traceback
+import requests
 
 from . import _client
 from ._storage import (
@@ -374,10 +378,10 @@ def init_app(
 
 # Global cache state for JWKS
 jwks_cache = {
-    "keyset": None,
-    "expiration": None,
-    "max_age": 86400,  # Default 24 hours
-    "port": 9400       # Default port
+    "keyset": None,  # currently cached jwks keys
+    "expiration": None,  # when the cache expires
+    "max_age": 86400,  # default cache time: 24 hours
+    "port": 9400       # default port for jwks endpoint
 }
 
 def start_jwks_refresh_task():
@@ -385,91 +389,95 @@ def start_jwks_refresh_task():
     def refresh_loop():
         while True:
             try:
-                # 1. Record the timestamp
+                # 1. record the timestamp
                 start_time = datetime.utcnow()
                 
-                # 2. Request the JWKS key
+                # 2. request the jwks key
                 port = jwks_cache['port']
                 jwks_uri = f"http://localhost:{port}/jwks"
                 response = requests.get(jwks_uri)
                 response.raise_for_status()
                 
-                # Parse the JWKS
+                # parse the jwks
                 jwks = JsonWebKeySet()
                 jwks.import_key_set(response.json())
                 
-                # 3. Set expiration time from cache-control
+                # 3. set expiration time from cache-control
                 cache_control = response.headers.get('Cache-Control', '')
-                max_age = jwks_cache['max_age']  # Default to existing
+                max_age = jwks_cache['max_age']  # default to existing
                 
                 if 'max-age' in cache_control:
                     try:
                         max_age = int(cache_control.split('max-age=')[1].split(',')[0])
                     except (ValueError, IndexError):
-                        pass  # Keep existing max_age
+                        pass  # keep existing max_age
                 
-                # 3. Calculate expiration time
+                # 3. calculate expiration time
                 expiration = start_time + timedelta(seconds=max_age)
                 
-                # Update cache
+                # update cache
                 jwks_cache.update({
-                    "keyset": jwks,
-                    "expiration": expiration,
-                    "max_age": max_age,
-                    "last_updated": start_time
+                    "keyset": jwks,  # store the parsed jwks
+                    "expiration": expiration,  # set expiration time
+                    "max_age": max_age,  # update max_age value
+                    "last_updated": start_time  # track when we last updated
                 })
                 
-                # 4. Update OAuth client (pseudo-code)
-                # This would depend on your actual OAuth client implementation
+                # 4. update oauth client (pseudo-code)
+                # this would depend on actual oauth client implementation
                 # update_oauth_client_jwks(jwks)
                 
-                # 5. Calculate sleep time with padding
-                sleep_time = max(max_age - 120, 10)  # Min 10 seconds
+                # 5. calculate sleep time with padding
+                sleep_time = max(max_age - 120, 10)  # min 10 seconds
                 time.sleep(sleep_time)
                 
             except Exception as e:
                 print(f"JWKS refresh failed: {e}")
                 traceback.print_exc()
-                # Retry after shorter interval on error
+                # retry after shorter interval on error
                 time.sleep(60)
                 
-    # Start the background thread
+    # start the background thread
     thread = threading.Thread(target=refresh_loop, daemon=True)
     thread.start()
     print(f"Started JWKS refresh task (Thread ID: {thread.ident})")
 
 @blueprint.get("/")
 def home():
+    # serve the main homepage template
     return flask.render_template("index.html")
 
 
 @blueprint.get("/.well-known/openid-configuration")
 def openid_config():
     def url_for(fn: Callable[..., object]) -> str:
+        # helper function to generate full urls for endpoints
         return flask.url_for(f".{fn.__name__}", _external=True)
 
-    # See https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+    # see https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
     # for information about the fields.
     return flask.jsonify({
-        "issuer": flask.request.host_url.rstrip("/"),
-        "authorization_endpoint": url_for(authorize),
-        "token_endpoint": url_for(issue_token),
-        "userinfo_endpoint": url_for(userinfo),
-        "registration_endpoint": url_for(register_client),
-        "jwks_uri": url_for(jwks),
-        "response_types_supported": Client.RESPONSE_TYPES_SUPPORTED,
-        "response_modes_supported": ["query"],
-        "grant_types_supported": Client.GRANT_TYPES_SUPPORTED,
-        "scopes_supported": Client.SCOPES_SUPPORTED,
-        "id_token_signing_alg_values_supported": [_JWS_ALG],
+        "issuer": flask.request.host_url.rstrip("/"),  # who issued the tokens
+        "authorization_endpoint": url_for(authorize),  # where to get auth codes
+        "token_endpoint": url_for(issue_token),  # where to exchange codes for tokens
+        "userinfo_endpoint": url_for(userinfo),  # where to get user info
+        "registration_endpoint": url_for(register_client),  # where to register clients
+        "jwks_uri": url_for(jwks),  # where to get cryptographic keys
+        "response_types_supported": Client.RESPONSE_TYPES_SUPPORTED,  # supported response types
+        "response_modes_supported": ["query"],  # how responses are returned
+        "grant_types_supported": Client.GRANT_TYPES_SUPPORTED,  # supported grant types
+        "scopes_supported": Client.SCOPES_SUPPORTED,  # available scopes
+        "id_token_signing_alg_values_supported": [_JWS_ALG],  # supported signing algorithms
     })
 
 @blueprint.post("/oauth2/keys/rotate")
 def rotate_keys():
+    # endpoint to rotate cryptographic signing keys
+    # generates new key and retires old ones
     new_kid = storage.rotate_key()
     return flask.jsonify({
-        "message": "Key rotated successfully",
-        "new_kid": new_kid
+        "message": "Key rotated successfully",  # success message
+        "new_kid": new_kid  # new key id after rotation
     }), HTTPStatus.OK
 
 @blueprint.get("/jwks")
@@ -477,7 +485,12 @@ def jwks():
     try:
         keyset = storage.jwks
         response = flask.jsonify(keyset)
-        response.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+        
+        # CORS headers for JWKS
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        
         return response
     except Exception as e:
         _logger.exception("Error generating JWKS")
@@ -485,17 +498,19 @@ def jwks():
             "error": "server_error",
             "error_description": "Could not generate JWKS"
         }), HTTPStatus.INTERNAL_SERVER_ERROR
-    
+
 
 class RegisterClientBody(pydantic.BaseModel):
     redirect_uris: list[pydantic.AnyUrl]
     scope: list[str] | None = None
     token_endpoint_auth_method: ClientAuthMethod
 
-@blueprint.post("/oauth2/clients")
+@blueprint.route("/oauth2/clients", methods=["POST", "GET"])  # Add GET method
 def register_client():
-    body = _validate_body(flask.request, RegisterClientBody)
-
+    if flask.request.method == "GET":
+        # Return client registration info or form
+        return flask.jsonify({"message": "Client registration endpoint"})
+    
     client = Client(
         id=str(uuid4()),
         secret=secrets.token_urlsafe(16),
@@ -573,7 +588,13 @@ def _validate_auth_request_client_params(
     Raises ``_AuthorizationValidationException`` if validation fails which results
     in an appropriate 400 response.
     """
-
+    # safety check for request method
+    if flask_request.method not in ["GET", "POST"]:
+        raise _AuthorizationValidationException(
+            "invalid_request", 
+            "Unsupported HTTP method for authorization endpoint"
+        )
+    
     request = FlaskOAuth2Request(flask_request)
 
     try:
