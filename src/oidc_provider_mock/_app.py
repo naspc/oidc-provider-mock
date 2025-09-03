@@ -486,11 +486,6 @@ def jwks():
         keyset = storage.jwks
         response = flask.jsonify(keyset)
         response.headers['Cache-Control'] = 'public, max-age=86400'
-        
-        # CORS headers for JWKS
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        
         return response
     except Exception as e:
         _logger.exception("Error generating JWKS")
